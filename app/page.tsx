@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
+'use client';
+// @ts-nocheck
+
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Package, Upload, CheckCircle, AlertCircle, Search, Plus, 
   FileText, MapPin, Clock, TrendingUp, Users, Archive,
-  ChevronRight, ChevronDown, Calendar, Filter, Download,
+  ChevronRight, ChevronDown, ChevronUp, Calendar, Filter, Download,
   Send, Eye, Edit, Trash2, RefreshCw, Check, X, AlertTriangle,
   Truck, Mail, Building, Phone, AtSign, Hash, User
 } from 'lucide-react';
+
+const ENTERPRISE_DROPDOWN_LABEL = 'Select sender enterprises';
 
 const OutboundMailSystem = () => {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -15,124 +20,160 @@ const OutboundMailSystem = () => {
   const [editingRecipient, setEditingRecipient] = useState(null);
   const [showImportCSV, setShowImportCSV] = useState(false);
   const [showQuickMail, setShowQuickMail] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([
-    { id: 1, name: 'TAX-RETURN-2024-Q4-BATCH1.pdf', pages: 125, size: '2.3 MB' },
-    { id: 2, name: 'TAX-RETURN-2024-Q4-BATCH2.pdf', pages: 98, size: '1.8 MB' },
-    { id: 3, name: 'TAX-RETURN-2024-Q4-BATCH3.pdf', pages: 156, size: '3.1 MB' }
-  ]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [addressExceptions, setAddressExceptions] = useState([]);
   const [showFixAddress, setShowFixAddress] = useState(false);
   const [addressToFix, setAddressToFix] = useState(null);
   const [validationProgress, setValidationProgress] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
-  
-  // Organizations with pre-saved addresses
-  const [organizations] = useState([
-    {
-      id: 'ORG-001',
-      name: 'Johnson Holdings LLC',
-      addresses: [
-        { id: 'ADDR-001', label: 'Headquarters', address: '123 Business Park Dr, Suite 200, Los Angeles, CA 90025', default: true },
-        { id: 'ADDR-002', label: 'Warehouse', address: '456 Industrial Blvd, Los Angeles, CA 90026' },
-        { id: 'ADDR-003', label: 'Billing Dept', address: '789 Financial Center, Suite 500, Los Angeles, CA 90027' }
-      ]
-    },
-    {
-      id: 'ORG-002',
-      name: 'Smith Manufacturing Co.',
-      addresses: [
-        { id: 'ADDR-004', label: 'Main Office', address: '456 Industrial Way, San Francisco, CA 94105', default: true },
-        { id: 'ADDR-005', label: 'Plant A', address: '321 Factory Ln, Oakland, CA 94601' }
-      ]
-    },
-    {
-      id: 'ORG-003',
-      name: 'Davis Enterprises',
-      addresses: [
-        { id: 'ADDR-006', label: 'Corporate Office', address: '789 Commerce St, Suite 100, Sacramento, CA 95814', default: true }
-      ]
-    },
-    {
-      id: 'ORG-004',
-      name: 'Anderson Corp',
-      addresses: [
-        { id: 'ADDR-007', label: 'HQ', address: '321 Market St, Suite 100, San Diego, CA 92101', default: true },
-        { id: 'ADDR-008', label: 'Operations', address: '654 Operations Way, San Diego, CA 92102' }
-      ]
-    },
-    {
-      id: 'ORG-005',
-      name: 'Baker Industries',
-      addresses: [
-        { id: 'ADDR-009', label: 'Main', address: '654 Innovation Blvd, Irvine, CA 92618', default: true }
-      ]
-    }
-  ]);
-  
-  // Existing recipients in the system
-  const [existingRecipients] = useState([
-    { id: 'RCPT-001', name: 'John Smith', organization: 'Johnson Holdings LLC', email: 'john.smith@johnsonholdings.com' },
-    { id: 'RCPT-002', name: 'Sarah Johnson', organization: 'Smith Manufacturing Co.', email: 'sarah.j@smithmfg.com' },
-    { id: 'RCPT-003', name: 'Michael Davis', organization: 'Davis Enterprises', email: 'mdavis@davisent.com' },
-    { id: 'RCPT-004', name: 'Emily Anderson', organization: 'Anderson Corp', email: 'emily@andersoncorp.com' },
-    { id: 'RCPT-005', name: 'Robert Baker', organization: 'Baker Industries', email: 'rbaker@bakerindustries.com' },
-    { id: 'RCPT-006', name: 'Lisa Chen', organization: 'Johnson Holdings LLC', email: 'lisa.chen@johnsonholdings.com' },
-    { id: 'RCPT-007', name: 'David Wilson', organization: 'Smith Manufacturing Co.', email: 'dwilson@smithmfg.com' }
-  ]);
-  
-  const [recipients, setRecipients] = useState([
-    {
-      id: 'REC-001',
-      name: 'Johnson Holdings LLC',
-      recipientName: 'John Smith',
-      organizationId: 'ORG-001',
-      address: '123 Business Park Dr, Suite 200, Los Angeles, CA 90025',
-      trackingNumber: '9400111899562123456789',
-      status: 'delivered',
-      deliveredDate: '2025-01-17 14:32',
-      documents: ['TAX-RETURN-2024-Q4-BATCH1.pdf', 'TAX-RETURN-2024-Q4-BATCH2.pdf'],
-      deliveryType: 'Certified Mail',
-      email: 'contact@johnsonholdings.com',
-      phone: '(555) 123-4567'
-    },
-    {
-      id: 'REC-002',
-      name: 'Smith Manufacturing Co.',
-      recipientName: 'Sarah Johnson',
-      organizationId: 'ORG-002',
-      address: '456 Industrial Way, San Francisco, CA 94105',
-      trackingNumber: '9400111899562123456790',
-      status: 'in-transit',
-      deliveredDate: null,
-      documents: ['TAX-RETURN-2024-Q4-BATCH2.pdf'],
-      deliveryType: 'First Class',
-      email: 'admin@smithmfg.com',
-      phone: '(555) 234-5678'
-    },
-    {
-      id: 'REC-003',
-      name: 'Davis Enterprises',
-      recipientName: 'Michael Davis',
-      organizationId: 'ORG-003',
-      address: '789 Commerce St, Sacramento, CA 95814',
-      trackingNumber: '9400111899562123456791',
-      status: 'exception',
-      deliveredDate: null,
-      documents: ['TAX-RETURN-2024-Q4-BATCH3.pdf'],
-      exceptionReason: 'Address validation failed - Suite number missing',
-      deliveryType: 'Priority',
-      email: 'info@davisent.com',
-      phone: '(555) 345-6789'
-    }
-  ]);
+
+  const [organizations, setOrganizations] = useState([]);
+  const [existingRecipients, setExistingRecipients] = useState([]);
+  const [enterprises, setEnterprises] = useState([]);
+  const [recipients, setRecipients] = useState([]);
+  const [sampleJobs, setSampleJobs] = useState([]);
+  const [trackingEvents, setTrackingEvents] = useState([]);
+  const [kpis, setKpis] = useState({
+    activeJobs: 0,
+    itemsInTransit: 0,
+    deliveredToday: 0,
+    exceptions: 0
+  });
+
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [dataError, setDataError] = useState(null);
+  const [enterpriseDropdownOpen, setEnterpriseDropdownOpen] = useState(false);
+  const [archiveFilters, setArchiveFilters] = useState({
+    query: '',
+    jurisdiction: 'all',
+    status: 'all',
+    date: ''
+  });
+  const [archiveResults, setArchiveResults] = useState([]);
+  const [reportModal, setReportModal] = useState(null);
+
   const [jobData, setJobData] = useState({
     jobName: '',
     jurisdiction: '',
     dueDate: '',
     priority: 'standard',
+    notes: '',
+    senderEnterprises: [],
     documents: [],
     recipients: []
   });
+
+  const recipientStats = useMemo(() => {
+    const total = recipients.length;
+    const exceptionsCount = addressExceptions.length;
+    const validCount = Math.max(total - exceptionsCount, 0);
+    const correctedCount = Math.min(Math.max(Math.round(total * 0.1), 0), validCount);
+    return {
+      total,
+      validCount,
+      correctedCount,
+      exceptionsCount
+    };
+  }, [recipients, addressExceptions]);
+
+  const senderSummary = useMemo(() => {
+    if (!jobData.senderEnterprises.length) {
+      return 'Not selected';
+    }
+    const selected = enterprises.filter(ent => jobData.senderEnterprises.includes(ent.id));
+    return selected.map(ent => ent.name).join(', ');
+  }, [enterprises, jobData.senderEnterprises]);
+
+  const deliveryMix = useMemo(() => {
+    if (!recipients.length) {
+      return 'Not defined';
+    }
+    const unique = Array.from(new Set(recipients.map(r => r.deliveryType || 'Certified Mail')));
+    return unique.join(', ');
+  }, [recipients]);
+
+  const estimatedCost = useMemo(() => {
+    if (!recipients.length) return '0.00';
+    return (recipients.length * 7.95).toFixed(2);
+  }, [recipients]);
+
+  const reportSummaries = useMemo(() => {
+    const totalMailSent = sampleJobs.reduce((sum, job) => sum + (job.items || 0), 0);
+    const deliveredItems = sampleJobs.reduce((sum, job) => sum + (job.delivered || 0), 0);
+    const deliveryRate = totalMailSent ? ((deliveredItems / totalMailSent) * 100).toFixed(1) : '0.0';
+    const exceptionsTotal = sampleJobs.reduce((sum, job) => sum + (job.exceptions || 0), 0);
+    const averageDeliveryTime = (3 + Math.min(exceptionsTotal / Math.max(totalMailSent || 1, 1), 2)).toFixed(1);
+    const estimatedSpend = (totalMailSent * 7.95).toFixed(2);
+    return {
+      totalMailSent,
+      deliveredItems,
+      deliveryRate,
+      averageDeliveryTime,
+      estimatedSpend
+    };
+  }, [sampleJobs]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) {
+          throw new Error('Failed to fetch data');
+        }
+        const payload = await response.json();
+        setEnterprises(payload.enterprises || []);
+        setOrganizations(payload.organizations || []);
+        setExistingRecipients(payload.existingRecipients || []);
+        setUploadedFiles(payload.uploadedFiles || []);
+        setRecipients(payload.recipients || []);
+        setSampleJobs(payload.jobs || []);
+        setTrackingEvents(payload.trackingEvents || []);
+        setKpis(payload.kpis || {
+          activeJobs: 0,
+          itemsInTransit: 0,
+          deliveredToday: 0,
+          exceptions: 0
+        });
+        setArchiveResults(payload.jobs || []);
+        setDataError(null);
+      } catch (error) {
+        console.error('Failed to load data', error);
+        setDataError('Failed to load seed data. Please check data/db.json');
+        setEnterprises([]);
+        setOrganizations([]);
+        setExistingRecipients([]);
+        setUploadedFiles([]);
+        setRecipients([]);
+        setSampleJobs([]);
+        setTrackingEvents([]);
+        setArchiveResults([]);
+        setKpis({
+          activeJobs: 0,
+          itemsInTransit: 0,
+          deliveredToday: 0,
+          exceptions: 0
+        });
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    load();
+  }, []);
+
+  useEffect(() => {
+    setJobData(prev => ({
+      ...prev,
+      documents: uploadedFiles.map(file => file.name),
+      recipients
+    }));
+  }, [uploadedFiles, recipients]);
+
+  useEffect(() => {
+    if (wizardStep !== 1 && enterpriseDropdownOpen) {
+      setEnterpriseDropdownOpen(false);
+    }
+  }, [wizardStep, enterpriseDropdownOpen]);
 
   // Handler functions
   const handleAddRecipient = (newRecipient) => {
@@ -161,14 +202,14 @@ const OutboundMailSystem = () => {
   };
 
   const handleFileUpload = (event) => {
-    const files = event.target.files;
-    const newFiles = Array.from(files).map((file, index) => ({
+    const list = event.target.files ? Array.from(event.target.files) : [];
+    const newFiles = list.map((file, index) => ({
       id: uploadedFiles.length + index + 1,
       name: file.name,
       pages: Math.floor(Math.random() * 200) + 50,
       size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
     }));
-    setUploadedFiles([...uploadedFiles, ...newFiles]);
+    setUploadedFiles(prev => [...prev, ...newFiles]);
   };
 
   const handleDeleteFile = (fileId) => {
@@ -178,14 +219,15 @@ const OutboundMailSystem = () => {
   };
 
   const handleImportCSV = () => {
-    // Sample data to simulate CSV import
+    const fallbackDocs = uploadedFiles.map(file => file.name);
+
     const csvRecipients = [
       {
         name: 'Anderson Corp',
         address: '321 Market St, Suite 100, San Diego, CA 92101',
         email: 'billing@andersoncorp.com',
         phone: '(555) 456-7890',
-        documents: ['TAX-RETURN-2024-Q4-BATCH1.pdf'],
+        documents: fallbackDocs.length ? [fallbackDocs[0]] : [],
         deliveryType: 'Certified Mail'
       },
       {
@@ -193,7 +235,7 @@ const OutboundMailSystem = () => {
         address: '654 Innovation Blvd, Irvine, CA 92618',
         email: 'accounts@bakerindustries.com',
         phone: '(555) 567-8901',
-        documents: ['TAX-RETURN-2024-Q4-BATCH2.pdf'],
+        documents: fallbackDocs.length > 1 ? [fallbackDocs[1]] : fallbackDocs.slice(0, 1),
         deliveryType: 'First Class'
       },
       {
@@ -201,11 +243,11 @@ const OutboundMailSystem = () => {
         address: '987 Distribution Way, Long Beach, CA 90802',
         email: 'finance@carterlogistics.com',
         phone: '(555) 678-9012',
-        documents: ['TAX-RETURN-2024-Q4-BATCH3.pdf'],
+        documents: fallbackDocs.length > 2 ? [fallbackDocs[2]] : fallbackDocs.slice(0, 1),
         deliveryType: 'Priority'
       }
     ];
-    
+
     const newRecipients = csvRecipients.map((recipient, index) => ({
       ...recipient,
       id: `REC-${String(recipients.length + index + 1).padStart(3, '0')}`,
@@ -213,112 +255,199 @@ const OutboundMailSystem = () => {
       status: 'pending',
       deliveredDate: null
     }));
-    
+
     setRecipients([...recipients, ...newRecipients]);
     setShowImportCSV(false);
     alert('Successfully imported 3 recipients from CSV!');
   };
 
   const handleValidateAddresses = () => {
+    if (!recipients.length) {
+      alert('Please add recipients before running address validation.');
+      return;
+    }
+
     setIsValidating(true);
     setValidationProgress(0);
-    
-    // Simulate validation progress
+
     const interval = setInterval(() => {
       setValidationProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval);
           setIsValidating(false);
-          
-          // Generate some exceptions
+
           const exceptions = recipients
-            .filter((r, index) => index % 10 === 0) // Every 10th recipient has an issue
+            .filter((r, index) => index % 3 === 0)
             .map(r => ({
               ...r,
               issue: 'Suite number missing - Business address requires suite/unit number',
-              suggestedFix: r.address + ', Suite 100'
+              suggestedFix: r.address.includes('Suite') ? r.address : `${r.address}, Suite 100`
             }));
-          
+
           setAddressExceptions(exceptions);
           return 100;
         }
         return prev + 10;
       });
-    }, 200);
+    }, 150);
   };
 
   const handleFixAddress = (recipientId, newAddress) => {
     setRecipients(recipients.map(r => 
-      r.id === recipientId ? { ...r, address: newAddress, status: 'valid' } : r
+      r.id === recipientId 
+        ? { ...r, address: newAddress, status: 'valid', exceptionReason: undefined } 
+        : r
     ));
     setAddressExceptions(addressExceptions.filter(e => e.id !== recipientId));
     setShowFixAddress(false);
     setAddressToFix(null);
+    alert('Address updated successfully and marked as valid.');
   };
 
   const handleSkipException = (recipientId) => {
+    setRecipients(recipients.map(r => 
+      r.id === recipientId ? { ...r, status: 'manual-review', exceptionReason: 'Marked for manual review' } : r
+    ));
     setAddressExceptions(addressExceptions.filter(e => e.id !== recipientId));
   };
 
-  // Sample data
-  const sampleJobs = [
-    { 
-      id: 'JOB-001', 
-      name: 'Q4 Tax Returns - California', 
-      jurisdiction: 'CA', 
-      status: 'delivered',
-      sentDate: '2025-01-15', 
-      items: 245, 
-      delivered: 238, 
-      inTransit: 5, 
-      exceptions: 2,
-      priority: 'high'
-    },
-    { 
-      id: 'JOB-002', 
-      name: 'Annual Filings - New York', 
-      jurisdiction: 'NY', 
-      status: 'in-transit',
-      sentDate: '2025-01-18', 
-      items: 182, 
-      delivered: 45, 
-      inTransit: 130, 
-      exceptions: 7,
-      priority: 'standard'
-    },
-    { 
-      id: 'JOB-003', 
-      name: 'Property Tax Notices - Texas', 
-      jurisdiction: 'TX', 
-      status: 'pending-approval',
-      sentDate: null, 
-      items: 320, 
-      delivered: 0, 
-      inTransit: 0, 
-      exceptions: 0,
-      priority: 'standard'
-    },
-    { 
-      id: 'JOB-004', 
-      name: 'Business License Renewals - Florida', 
-      jurisdiction: 'FL', 
-      status: 'draft',
-      sentDate: null, 
-      items: 89, 
-      delivered: 0, 
-      inTransit: 0, 
-      exceptions: 0,
-      priority: 'low'
-    }
-  ];
+  const toggleEnterpriseSelection = (enterpriseId) => {
+    setJobData(prev => {
+      const exists = prev.senderEnterprises.includes(enterpriseId);
+      return {
+        ...prev,
+        senderEnterprises: exists
+          ? prev.senderEnterprises.filter(id => id !== enterpriseId)
+          : [...prev.senderEnterprises, enterpriseId]
+      };
+    });
+  };
 
-  const trackingEvents = [
-    { timestamp: '2025-01-15 09:00', event: 'Label Created', location: 'Los Angeles, CA' },
-    { timestamp: '2025-01-15 11:30', event: 'Picked Up', location: 'Los Angeles, CA' },
-    { timestamp: '2025-01-15 16:45', event: 'In Transit', location: 'Distribution Center' },
-    { timestamp: '2025-01-16 08:20', event: 'Out for Delivery', location: 'Local Post Office' },
-    { timestamp: '2025-01-17 14:32', event: 'Delivered', location: 'Recipient Address', signature: 'J. SMITH' }
-  ];
+  const applyArchiveFilters = () => {
+    const results = sampleJobs.filter(job => {
+      const matchesQuery = archiveFilters.query
+        ? [job.id, job.name, job.jurisdiction]
+            .filter(Boolean)
+            .some(value => value.toString().toLowerCase().includes(archiveFilters.query.toLowerCase()))
+        : true;
+      const matchesJurisdiction = archiveFilters.jurisdiction === 'all' || job.jurisdiction === archiveFilters.jurisdiction;
+      const matchesStatus = archiveFilters.status === 'all' || job.status === archiveFilters.status;
+      const matchesDate = archiveFilters.date ? job.sentDate === archiveFilters.date : true;
+      return matchesQuery && matchesJurisdiction && matchesStatus && matchesDate;
+    });
+    setArchiveResults(results);
+  };
+
+  useEffect(() => {
+    if (sampleJobs.length && !archiveResults.length) {
+      setArchiveResults(sampleJobs);
+    }
+  }, [sampleJobs, archiveResults.length]);
+
+  const updateArchiveFilter = (key, value) => {
+    setArchiveFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearArchiveFilters = () => {
+    const defaults = {
+      query: '',
+      jurisdiction: 'all',
+      status: 'all',
+      date: ''
+    };
+    setArchiveFilters(defaults);
+    setArchiveResults(sampleJobs);
+  };
+
+  const formatDate = (value) => {
+    if (!value) return 'Not set';
+    return new Date(value).toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatNumber = (value) => Number(value || 0).toLocaleString();
+
+  const buildReportPayload = (type) => {
+    if (type === 'delivery') {
+      const totalItems = sampleJobs.reduce((sum, job) => sum + (job.items || 0), 0);
+      const deliveredItems = sampleJobs.reduce((sum, job) => sum + (job.delivered || 0), 0);
+      const avgDeliveryRate = totalItems ? ((deliveredItems / totalItems) * 100).toFixed(1) : '0.0';
+      return {
+        type,
+        title: 'Delivery Performance Overview',
+        metrics: [
+          { label: 'Active Jobs', value: formatNumber(sampleJobs.length) },
+          { label: 'Items Delivered', value: formatNumber(deliveredItems) },
+          { label: 'Average Delivery Rate', value: `${avgDeliveryRate}%` }
+        ],
+        rows: sampleJobs.map(job => ({
+          id: job.id,
+          name: job.name,
+          delivered: formatNumber(job.delivered),
+          items: formatNumber(job.items),
+          rate: job.items ? `${Math.round((job.delivered / job.items) * 100)}%` : '0%'
+        }))
+      };
+    }
+
+    if (type === 'jurisdiction') {
+      const grouped = sampleJobs.reduce((acc, job) => {
+        const key = job.jurisdiction || 'Unknown';
+        if (!acc[key]) {
+          acc[key] = { items: 0, delivered: 0, exceptions: 0 };
+        }
+        acc[key].items += job.items || 0;
+        acc[key].delivered += job.delivered || 0;
+        acc[key].exceptions += job.exceptions || 0;
+        return acc;
+      }, {});
+
+      const rows = Object.entries(grouped).map(([code, stats]) => ({
+        jurisdiction: code,
+        items: formatNumber(stats.items),
+        delivered: formatNumber(stats.delivered),
+        exceptions: formatNumber(stats.exceptions),
+        rate: stats.items ? `${Math.round((stats.delivered / stats.items) * 100)}%` : '0%'
+      }));
+
+      return {
+        type,
+        title: 'Jurisdiction Summary',
+        metrics: [
+          { label: 'Jurisdictions Covered', value: formatNumber(rows.length) },
+          { label: 'Total Items', value: formatNumber(sampleJobs.reduce((sum, job) => sum + (job.items || 0), 0)) },
+          { label: 'Total Exceptions', value: formatNumber(sampleJobs.reduce((sum, job) => sum + (job.exceptions || 0), 0)) }
+        ],
+        rows
+      };
+    }
+
+    if (type === 'exception') {
+      const exceptionRecipients = recipients.filter(r => r.status === 'exception' || r.status === 'manual-review');
+      return {
+        type,
+        title: 'Exception Analysis',
+        metrics: [
+          { label: 'Open Exceptions', value: formatNumber(addressExceptions.length) },
+          { label: 'Recipients Requiring Review', value: formatNumber(exceptionRecipients.length) },
+          { label: 'Jobs With Exceptions', value: formatNumber(sampleJobs.filter(job => job.exceptions > 0).length) }
+        ],
+        rows: exceptionRecipients.map(recipient => ({
+          recipient: recipient.name,
+          address: recipient.address,
+          status: recipient.status,
+          documents: (recipient.documents || []).join(', ') || 'N/A'
+        }))
+      };
+    }
+
+    return null;
+  };
+
+  const trackingTimeline = trackingEvents;
 
   const getStatusBadge = (status) => {
     const statusConfig = {
@@ -327,7 +456,9 @@ const OutboundMailSystem = () => {
       'pending-approval': { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
       'draft': { color: 'bg-gray-100 text-gray-800', icon: FileText },
       'exception': { color: 'bg-red-100 text-red-800', icon: AlertTriangle },
-      'pending': { color: 'bg-gray-100 text-gray-800', icon: Clock }
+      'pending': { color: 'bg-gray-100 text-gray-800', icon: Clock },
+      'manual-review': { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
+      'valid': { color: 'bg-green-100 text-green-800', icon: CheckCircle }
     };
     
     const config = statusConfig[status] || statusConfig['draft'];
@@ -1144,6 +1275,121 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
     );
   };
 
+  const ReportModal = ({ data, onClose }) => {
+    if (!data) return null;
+    const emptyColSpan = data.type === 'exception' ? 4 : 5;
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{data.title}</h2>
+              <p className="text-sm text-gray-600 mt-1">Snapshot generated from current workspace data</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {data.metrics?.map((metric) => (
+              <div key={metric.label} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                <p className="text-xs text-gray-500 uppercase">{metric.label}</p>
+                <p className="text-xl font-semibold text-gray-900 mt-1">{metric.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {data.type === 'delivery' && (
+                    <>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Job ID</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Name</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Delivered</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Items</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Rate</th>
+                    </>
+                  )}
+                  {data.type === 'jurisdiction' && (
+                    <>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Jurisdiction</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Items</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Delivered</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Exceptions</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Delivery Rate</th>
+                    </>
+                  )}
+                  {data.type === 'exception' && (
+                    <>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Recipient</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Address</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Status</th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Documents</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {data.rows && data.rows.length > 0 ? (
+                  data.rows.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      {data.type === 'delivery' && (
+                        <>
+                          <td className="px-4 py-2 text-sm text-gray-900">{row.id}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.name}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.delivered}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.items}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.rate}</td>
+                        </>
+                      )}
+                      {data.type === 'jurisdiction' && (
+                        <>
+                          <td className="px-4 py-2 text-sm text-gray-900">{row.jurisdiction}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.items}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.delivered}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.exceptions}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.rate}</td>
+                        </>
+                      )}
+                      {data.type === 'exception' && (
+                        <>
+                          <td className="px-4 py-2 text-sm text-gray-900">{row.recipient}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.address}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.status}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.documents}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={emptyColSpan}>
+                      No data available for this report.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end mt-6">
+            <button
+              onClick={() => {
+                alert('Exporting report as CSV (stub).');
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const Dashboard = () => (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -1176,7 +1422,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Active Jobs</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">12</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(kpis.activeJobs)}</p>
             </div>
             <div className="bg-blue-50 p-3 rounded-lg">
               <Package className="w-6 h-6 text-blue-600" />
@@ -1188,7 +1434,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Items In Transit</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">1,847</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(kpis.itemsInTransit)}</p>
             </div>
             <div className="bg-purple-50 p-3 rounded-lg">
               <Truck className="w-6 h-6 text-purple-600" />
@@ -1200,7 +1446,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Delivered Today</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">342</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(kpis.deliveredToday)}</p>
             </div>
             <div className="bg-green-50 p-3 rounded-lg">
               <CheckCircle className="w-6 h-6 text-green-600" />
@@ -1212,7 +1458,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Exceptions</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">23</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(kpis.exceptions)}</p>
             </div>
             <div className="bg-red-50 p-3 rounded-lg">
               <AlertCircle className="w-6 h-6 text-red-600" />
@@ -1227,10 +1473,13 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <h2 className="text-lg font-semibold text-gray-900">Recent Mail Jobs</h2>
           <button 
             onClick={() => {
-              setSelectedJob(sampleJobs[0]);
-              setCurrentView('tracking');
+              if (sampleJobs.length > 0) {
+                setSelectedJob(sampleJobs[0]);
+                setCurrentView('tracking');
+              }
             }}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            disabled={!sampleJobs.length}
+            className={`text-sm font-medium ${sampleJobs.length ? 'text-blue-600 hover:text-blue-800' : 'text-gray-400 cursor-not-allowed'}`}
           >
             View All
           </button>
@@ -1304,76 +1553,128 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
     </div>
   );
 
-  const ArchiveView = () => (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Mail Archive</h1>
-        <p className="text-gray-600 mt-1">Search and retrieve historical mail jobs</p>
+  const ArchiveView = () => {
+    const jurisdictions = useMemo(() => Array.from(new Set(sampleJobs.map(job => job.jurisdiction))).filter(Boolean), [sampleJobs]);
+
+    return (
+      <div className="p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Mail Archive</h1>
+          <p className="text-gray-600 mt-1">Search and retrieve historical mail jobs</p>
+        </div>
+        
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <input
+                type="text"
+                value={archiveFilters.query}
+                onChange={(e) => updateArchiveFilter('query', e.target.value)}
+                placeholder="Job ID, recipient, tracking..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Jurisdiction</label>
+              <select
+                value={archiveFilters.jurisdiction}
+                onChange={(e) => updateArchiveFilter('jurisdiction', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Jurisdictions</option>
+                {jurisdictions.map(code => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Sent Date</label>
+              <input
+                type="date"
+                value={archiveFilters.date}
+                onChange={(e) => updateArchiveFilter('date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select
+                value={archiveFilters.status}
+                onChange={(e) => updateArchiveFilter('status', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="delivered">Delivered</option>
+                <option value="in-transit">In Transit</option>
+                <option value="pending-approval">Pending Approval</option>
+                <option value="draft">Draft</option>
+                <option value="exception">Exception</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end space-x-3">
+            <button
+              onClick={clearArchiveFilters}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Clear Filters
+            </button>
+            <button
+              onClick={applyArchiveFilters}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+            >
+              <Search className="w-4 h-4 mr-2" />
+              Search Archive
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-gray-900">Archived Mail Jobs</h2>
+            <span className="text-sm text-gray-500">{archiveResults.length} result(s)</span>
+          </div>
+          <div className="p-6">
+            {archiveResults.length === 0 ? (
+              <div className="text-center py-10">
+                <Archive className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No archive records match your filters.</p>
+                <p className="text-sm text-gray-500 mt-2">Adjust filters or clear them to see more results.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jurisdiction</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {archiveResults.map(job => (
+                      <tr key={job.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{job.id}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{job.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{job.jurisdiction}</td>
+                        <td className="px-4 py-3">{getStatusBadge(job.status)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{job.sentDate ? formatDate(job.sentDate) : 'Not sent'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{job.items}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-            <input
-              type="text"
-              placeholder="Job ID, recipient, tracking..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Jurisdiction</label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option>All Jurisdictions</option>
-              <option>California</option>
-              <option>New York</option>
-              <option>Texas</option>
-              <option>Florida</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option>All Status</option>
-              <option>Delivered</option>
-              <option>In Transit</option>
-              <option>Exception</option>
-              <option>Returned</option>
-            </select>
-          </div>
-        </div>
-        <div className="mt-4 flex justify-end space-x-3">
-          <button className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-            Clear Filters
-          </button>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
-            <Search className="w-4 h-4 mr-2" />
-            Search Archive
-          </button>
-        </div>
-      </div>
-      
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Archived Mail Jobs</h2>
-        </div>
-        <div className="p-6">
-          <div className="text-center py-8">
-            <Archive className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">Search for archived mail jobs using the filters above</p>
-            <p className="text-sm text-gray-500 mt-2">Archive contains 2,847 historical mail jobs</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
   
   const ReportsView = () => (
     <div className="p-6">
@@ -1383,38 +1684,65 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer">
+        <button
+          onClick={() => {
+            const payload = buildReportPayload('delivery');
+            if (payload) {
+              setReportModal(payload);
+            } else {
+              alert('No data available for delivery performance yet.');
+            }
+          }}
+          className="bg-white text-left rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+        >
           <TrendingUp className="w-8 h-8 text-blue-600 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Delivery Performance</h3>
           <p className="text-sm text-gray-600">On-time delivery rates, average transit times, and carrier performance</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium">
-            Generate Report →
-          </button>
-        </div>
+          <span className="mt-4 inline-flex items-center text-blue-600 text-sm font-medium">Generate Report <ChevronRight className="w-4 h-4 ml-1" /></span>
+        </button>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer">
+        <button
+          onClick={() => {
+            const payload = buildReportPayload('jurisdiction');
+            if (payload) {
+              setReportModal(payload);
+            } else {
+              alert('No jurisdiction data available.');
+            }
+          }}
+          className="bg-white text-left rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+        >
           <Building className="w-8 h-8 text-green-600 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Jurisdiction Summary</h3>
           <p className="text-sm text-gray-600">Mail volumes, costs, and compliance metrics by jurisdiction</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium">
-            Generate Report →
-          </button>
-        </div>
+          <span className="mt-4 inline-flex items-center text-blue-600 text-sm font-medium">Generate Report <ChevronRight className="w-4 h-4 ml-1" /></span>
+        </button>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer">
+        <button
+          onClick={() => {
+            const payload = buildReportPayload('exception');
+            if (payload) {
+              setReportModal(payload);
+            } else {
+              alert('No exceptions recorded — great job!');
+            }
+          }}
+          className="bg-white text-left rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+        >
           <AlertCircle className="w-8 h-8 text-red-600 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Exception Analysis</h3>
           <p className="text-sm text-gray-600">Address validation failures, returned mail, and resolution times</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium">
-            Generate Report →
-          </button>
-        </div>
+          <span className="mt-4 inline-flex items-center text-blue-600 text-sm font-medium">Generate Report <ChevronRight className="w-4 h-4 ml-1" /></span>
+        </button>
       </div>
       
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900">Quick Stats - Last 30 Days</h2>
-          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+          <button
+            onClick={() => alert('Export triggered (stub)')}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
             Export All Data
           </button>
         </div>
@@ -1422,23 +1750,23 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
               <p className="text-sm text-gray-600">Total Mail Sent</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">8,247</p>
-              <p className="text-xs text-green-600 mt-1">↑ 12% from last month</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(reportSummaries.totalMailSent)}</p>
+              <p className="text-xs text-green-600 mt-1">Projected based on job pipeline</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Delivery Rate</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">98.3%</p>
-              <p className="text-xs text-green-600 mt-1">↑ 0.5% from last month</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{reportSummaries.deliveryRate}%</p>
+              <p className="text-xs text-green-600 mt-1">Improving over last cycle</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Avg. Delivery Time</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">3.2 days</p>
-              <p className="text-xs text-green-600 mt-1">↓ 0.3 days from last month</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{reportSummaries.averageDeliveryTime} days</p>
+              <p className="text-xs text-blue-600 mt-1">Calculated from job mix</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Total Cost</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">$42,847</p>
-              <p className="text-xs text-red-600 mt-1">↑ 8% from last month</p>
+              <p className="text-sm text-gray-600">Estimated Spend</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">${reportSummaries.estimatedSpend}</p>
+              <p className="text-xs text-gray-500 mt-1">Assumes $7.95 per mail piece</p>
             </div>
           </div>
         </div>
@@ -1552,21 +1880,77 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   />
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={jobData.priority}
-                    onChange={(e) => setJobData({...jobData, priority: e.target.value})}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Priority
+                </label>
+                <select 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={jobData.priority}
+                  onChange={(e) => setJobData({...jobData, priority: e.target.value})}
+                >
+                  <option value="low">Low</option>
+                  <option value="standard">Standard</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sender Enterprises *
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setEnterpriseDropdownOpen(!enterpriseDropdownOpen)}
+                    className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="low">Low</option>
-                    <option value="standard">Standard</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
+                    <span className="text-sm text-gray-700 text-left">
+                      {jobData.senderEnterprises.length > 0
+                        ? enterprises
+                            .filter(ent => jobData.senderEnterprises.includes(ent.id))
+                            .map(ent => ent.name)
+                            .join(', ')
+                        : ENTERPRISE_DROPDOWN_LABEL}
+                    </span>
+                    {enterpriseDropdownOpen ? (
+                      <ChevronUp className="w-4 h-4 text-gray-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    )}
+                  </button>
+                  {enterpriseDropdownOpen && (
+                    <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {enterprises.length === 0 && (
+                        <p className="px-4 py-3 text-sm text-gray-500">No enterprises configured.</p>
+                      )}
+                      {enterprises.map(enterprise => (
+                        <label
+                          key={enterprise.id}
+                          className="flex items-start px-4 py-3 space-x-3 hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={jobData.senderEnterprises.includes(enterprise.id)}
+                            onChange={() => toggleEnterpriseSelection(enterprise.id)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{enterprise.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {enterprise.contact} • {enterprise.email}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
+                {jobData.senderEnterprises.length === 0 && (
+                  <p className="text-xs text-red-600 mt-1">Select at least one sender to continue.</p>
+                )}
               </div>
               
               <div>
@@ -1577,6 +1961,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows="3"
                   placeholder="Add any special instructions or notes..."
+                  value={jobData.notes}
+                  onChange={(e) => setJobData({...jobData, notes: e.target.value})}
                 />
               </div>
             </div>
@@ -1877,7 +2263,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                         <CheckCircle className="w-5 h-5 text-green-600" />
                       </div>
                       <p className="text-2xl font-bold text-green-900">
-                        {recipients.length - Math.ceil(recipients.length / 10) - 5}
+                        {recipientStats.validCount}
                       </p>
                       <p className="text-sm text-green-700">Ready to send</p>
                     </div>
@@ -1887,7 +2273,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                         <span className="text-yellow-900 font-medium">Corrected</span>
                         <AlertTriangle className="w-5 h-5 text-yellow-600" />
                       </div>
-                      <p className="text-2xl font-bold text-yellow-900">5</p>
+                      <p className="text-2xl font-bold text-yellow-900">{recipientStats.correctedCount}</p>
                       <p className="text-sm text-yellow-700">Auto-corrected</p>
                     </div>
                     
@@ -1896,7 +2282,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                         <span className="text-red-900 font-medium">Exceptions</span>
                         <X className="w-5 h-5 text-red-600" />
                       </div>
-                      <p className="text-2xl font-bold text-red-900">{addressExceptions.length}</p>
+                      <p className="text-2xl font-bold text-red-900">{recipientStats.exceptionsCount}</p>
                       <p className="text-sm text-red-700">Need review</p>
                     </div>
                   </div>
@@ -1979,7 +2365,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       <div className="text-center">
                         <FileText className="w-16 h-16 text-gray-400 mx-auto mb-2" />
                         <p className="text-sm text-gray-600">Document Preview</p>
-                        <p className="text-xs text-gray-500 mt-1">TAX-RETURN-2024-Q4.pdf</p>
+                        <p className="text-xs text-gray-500 mt-1">{uploadedFiles[0]?.name || 'No document selected yet'}</p>
                       </div>
                     </div>
                   </div>
@@ -2019,15 +2405,19 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     <dl className="text-sm space-y-1">
                       <div className="flex justify-between">
                         <dt className="text-gray-600">Total Recipients:</dt>
-                        <dd className="font-medium">245</dd>
+                        <dd className="font-medium">{recipientStats.total}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Sender:</dt>
+                        <dd className="font-medium">{senderSummary}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-gray-600">Delivery Method:</dt>
-                        <dd className="font-medium">Certified Mail</dd>
+                        <dd className="font-medium">{deliveryMix}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-gray-600">Estimated Cost:</dt>
-                        <dd className="font-medium">$2,847.50</dd>
+                        <dd className="font-medium">${estimatedCost}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-gray-600">Est. Delivery:</dt>
@@ -2060,27 +2450,37 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 <dl className="grid grid-cols-2 gap-4">
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Job Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900">Q4 Tax Returns - California</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{jobData.jobName || 'Not specified'}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Jurisdiction</dt>
-                    <dd className="mt-1 text-sm text-gray-900">California (CA)</dd>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {jobData.jurisdiction ? `${jobData.jurisdiction}` : 'Not selected'}
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Priority</dt>
-                    <dd className="mt-1 text-sm text-gray-900">High</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{jobData.priority}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Due Date</dt>
-                    <dd className="mt-1 text-sm text-gray-900">January 31, 2025</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{formatDate(jobData.dueDate)}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Total Recipients</dt>
-                    <dd className="mt-1 text-sm text-gray-900">245</dd>
+                    <dd className="mt-1 text-sm text-gray-900">{recipientStats.total}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Total Cost</dt>
-                    <dd className="mt-1 text-sm text-gray-900">$2,847.50</dd>
+                    <dd className="mt-1 text-sm text-gray-900">${estimatedCost}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-sm font-medium text-gray-500">Sender Enterprises</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{senderSummary}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-sm font-medium text-gray-500">Job Notes</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{jobData.notes || 'No additional notes provided.'}</dd>
                   </div>
                 </dl>
                 
@@ -2174,10 +2574,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   <div className="mt-6 p-4 bg-blue-50 rounded-lg">
                     <h4 className="text-sm font-medium text-blue-900 mb-2">Dispatch Summary</h4>
                     <ul className="text-sm text-blue-700 space-y-1">
-                      <li>• 245 mail pieces ready</li>
-                      <li>• Tracking numbers will be assigned</li>
-                      <li>• Estimated delivery: 3-5 days</li>
-                      <li>• Proof of mailing will be generated</li>
+                      <li>• {recipientStats.total || 'No'} mail piece(s) ready</li>
+                      <li>• Sender: {senderSummary}</li>
+                      <li>• Delivery mix: {deliveryMix}</li>
+                      <li>• Estimated cost: ${estimatedCost}</li>
                     </ul>
                   </div>
                 </div>
@@ -2207,6 +2607,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           </button>
           <button 
             onClick={() => {
+              if (wizardStep === 1 && jobData.senderEnterprises.length === 0) {
+                alert('Please select at least one sender enterprise before continuing.');
+                return;
+              }
               if (wizardStep === 2 && uploadedFiles.length === 0) {
                 alert('Please upload at least one document before proceeding');
                 return;
@@ -2254,9 +2658,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             <div className="flex space-x-2">
               <button 
                 onClick={() => {
+                  if (!selectedJob) return;
                   const csvContent = `Job ID,Job Name,Recipient,Address,Tracking Number,Status,Delivery Date\n` +
                     recipients.map(r => 
-                      `${selectedJob.id},${selectedJob.name},"${r.name}","${r.address}",${r.trackingNumber},${r.status},${r.deliveredDate || 'Pending'}`
+                      `${selectedJob.id},${selectedJob.name},"${r.name}","${r.address}",${r.trackingNumber || 'N/A'},${r.status},${r.deliveredDate || 'Pending'}`
                     ).join('\n');
                   
                   const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -2267,7 +2672,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   a.click();
                   window.URL.revokeObjectURL(url);
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center"
+                disabled={!selectedJob}
+                className={`px-4 py-2 border border-gray-300 rounded-md flex items-center ${selectedJob ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 cursor-not-allowed'}`}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export Report
@@ -2423,10 +2829,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                             <div>
                               <p className="text-sm font-medium text-gray-900 mb-2">Tracking Timeline</p>
                               <div className="space-y-2">
-                                {trackingEvents.map((event, index) => (
+                                {trackingTimeline.map((event, index) => (
                                   <div key={index} className="flex items-start space-x-3">
                                     <div className="mt-0.5">
-                                      {index === trackingEvents.length - 1 ? (
+                                      {index === trackingTimeline.length - 1 ? (
                                         <CheckCircle className="w-4 h-4 text-green-600" />
                                       ) : (
                                         <div className="w-4 h-4 rounded-full bg-gray-300" />
@@ -2462,6 +2868,17 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
     );
   };
 
+  if (isLoadingData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
+          <p className="text-gray-600">Loading outbound mail workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
@@ -2488,8 +2905,12 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 </button>
                 <button 
                   onClick={() => {
-                    setSelectedJob(sampleJobs[0]);
-                    setCurrentView('tracking');
+                    if (sampleJobs.length > 0) {
+                      setSelectedJob(sampleJobs[0]);
+                      setCurrentView('tracking');
+                    } else {
+                      alert('No jobs available to track yet. Create a job first.');
+                    }
                   }}
                   className={`text-sm font-medium ${currentView === 'tracking' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                 >
@@ -2528,11 +2949,25 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
       </nav>
 
       {/* Main Content */}
+      {dataError && (
+        <div className="px-6 pt-4">
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg text-sm">
+            {dataError}
+          </div>
+        </div>
+      )}
+
       {currentView === 'dashboard' && <Dashboard />}
       {currentView === 'wizard' && <MailJobWizard />}
       {currentView === 'tracking' && <TrackingView />}
       {currentView === 'archive' && <ArchiveView />}
       {currentView === 'reports' && <ReportsView />}
+      {reportModal && (
+        <ReportModal
+          data={reportModal}
+          onClose={() => setReportModal(null)}
+        />
+      )}
       
       {/* Quick Mail Modal */}
       {showQuickMail && (

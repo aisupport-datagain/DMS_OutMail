@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+build/
+coverage/
+logs/
+temp/
+cache/
+backup/
+archive/
+trash/
+out/
+.turbo/
+*.local
+*.log

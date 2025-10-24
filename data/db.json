@@ -1,0 +1,307 @@
+{
+  "enterprises": [
+    {
+      "id": "ENT-001",
+      "name": "KPMG Subclient",
+      "contact": "Mary Collins",
+      "email": "mary.collins@kpmg.com",
+      "phone": "(555) 201-8844"
+    },
+    {
+      "id": "ENT-002",
+      "name": "BDO Advisory",
+      "contact": "Gavin Lee",
+      "email": "gavin.lee@bdo.com",
+      "phone": "(555) 201-3355"
+    },
+    {
+      "id": "ENT-003",
+      "name": "Client Services Group",
+      "contact": "Kim Patel",
+      "email": "kpatel@clientservices.com",
+      "phone": "(555) 409-7788"
+    }
+  ],
+  "organizations": [
+    {
+      "id": "ORG-001",
+      "name": "Johnson Holdings LLC",
+      "addresses": [
+        {
+          "id": "ADDR-001",
+          "label": "Headquarters",
+          "address": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
+          "default": true
+        },
+        {
+          "id": "ADDR-002",
+          "label": "Warehouse",
+          "address": "456 Industrial Blvd, Los Angeles, CA 90026"
+        },
+        {
+          "id": "ADDR-003",
+          "label": "Billing Dept",
+          "address": "789 Financial Center, Suite 500, Los Angeles, CA 90027"
+        }
+      ]
+    },
+    {
+      "id": "ORG-002",
+      "name": "Smith Manufacturing Co.",
+      "addresses": [
+        {
+          "id": "ADDR-004",
+          "label": "Main Office",
+          "address": "456 Industrial Way, San Francisco, CA 94105",
+          "default": true
+        },
+        {
+          "id": "ADDR-005",
+          "label": "Plant A",
+          "address": "321 Factory Ln, Oakland, CA 94601"
+        }
+      ]
+    },
+    {
+      "id": "ORG-003",
+      "name": "Davis Enterprises",
+      "addresses": [
+        {
+          "id": "ADDR-006",
+          "label": "Corporate Office",
+          "address": "789 Commerce St, Suite 100, Sacramento, CA 95814",
+          "default": true
+        }
+      ]
+    },
+    {
+      "id": "ORG-004",
+      "name": "Anderson Corp",
+      "addresses": [
+        {
+          "id": "ADDR-007",
+          "label": "HQ",
+          "address": "321 Market St, Suite 100, San Diego, CA 92101",
+          "default": true
+        },
+        {
+          "id": "ADDR-008",
+          "label": "Operations",
+          "address": "654 Operations Way, San Diego, CA 92102"
+        }
+      ]
+    },
+    {
+      "id": "ORG-005",
+      "name": "Baker Industries",
+      "addresses": [
+        {
+          "id": "ADDR-009",
+          "label": "Main",
+          "address": "654 Innovation Blvd, Irvine, CA 92618",
+          "default": true
+        }
+      ]
+    }
+  ],
+  "existingRecipients": [
+    {
+      "id": "RCPT-001",
+      "name": "John Smith",
+      "organization": "Johnson Holdings LLC",
+      "email": "john.smith@johnsonholdings.com"
+    },
+    {
+      "id": "RCPT-002",
+      "name": "Sarah Johnson",
+      "organization": "Smith Manufacturing Co.",
+      "email": "sarah.j@smithmfg.com"
+    },
+    {
+      "id": "RCPT-003",
+      "name": "Michael Davis",
+      "organization": "Davis Enterprises",
+      "email": "mdavis@davisent.com"
+    },
+    {
+      "id": "RCPT-004",
+      "name": "Emily Anderson",
+      "organization": "Anderson Corp",
+      "email": "emily@andersoncorp.com"
+    },
+    {
+      "id": "RCPT-005",
+      "name": "Robert Baker",
+      "organization": "Baker Industries",
+      "email": "rbaker@bakerindustries.com"
+    },
+    {
+      "id": "RCPT-006",
+      "name": "Lisa Chen",
+      "organization": "Johnson Holdings LLC",
+      "email": "lisa.chen@johnsonholdings.com"
+    },
+    {
+      "id": "RCPT-007",
+      "name": "David Wilson",
+      "organization": "Smith Manufacturing Co.",
+      "email": "dwilson@smithmfg.com"
+    }
+  ],
+  "uploadedFiles": [
+    {
+      "id": 1,
+      "name": "TAX-RETURN-2024-Q4-BATCH1.pdf",
+      "pages": 125,
+      "size": "2.3 MB"
+    },
+    {
+      "id": 2,
+      "name": "TAX-RETURN-2024-Q4-BATCH2.pdf",
+      "pages": 98,
+      "size": "1.8 MB"
+    },
+    {
+      "id": 3,
+      "name": "TAX-RETURN-2024-Q4-BATCH3.pdf",
+      "pages": 156,
+      "size": "3.1 MB"
+    }
+  ],
+  "recipients": [
+    {
+      "id": "REC-001",
+      "name": "Johnson Holdings LLC",
+      "recipientName": "John Smith",
+      "organizationId": "ORG-001",
+      "address": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
+      "trackingNumber": "9400111899562123456789",
+      "status": "delivered",
+      "deliveredDate": "2025-01-17 14:32",
+      "documents": [
+        "TAX-RETURN-2024-Q4-BATCH1.pdf",
+        "TAX-RETURN-2024-Q4-BATCH2.pdf"
+      ],
+      "deliveryType": "Certified Mail",
+      "email": "contact@johnsonholdings.com",
+      "phone": "(555) 123-4567"
+    },
+    {
+      "id": "REC-002",
+      "name": "Smith Manufacturing Co.",
+      "recipientName": "Sarah Johnson",
+      "organizationId": "ORG-002",
+      "address": "456 Industrial Way, San Francisco, CA 94105",
+      "trackingNumber": "9400111899562123456790",
+      "status": "in-transit",
+      "deliveredDate": null,
+      "documents": [
+        "TAX-RETURN-2024-Q4-BATCH2.pdf"
+      ],
+      "deliveryType": "First Class",
+      "email": "admin@smithmfg.com",
+      "phone": "(555) 234-5678"
+    },
+    {
+      "id": "REC-003",
+      "name": "Davis Enterprises",
+      "recipientName": "Michael Davis",
+      "organizationId": "ORG-003",
+      "address": "789 Commerce St, Sacramento, CA 95814",
+      "trackingNumber": "9400111899562123456791",
+      "status": "exception",
+      "deliveredDate": null,
+      "documents": [
+        "TAX-RETURN-2024-Q4-BATCH3.pdf"
+      ],
+      "exceptionReason": "Address validation failed - Suite number missing",
+      "deliveryType": "Priority",
+      "email": "info@davisent.com",
+      "phone": "(555) 345-6789"
+    }
+  ],
+  "jobs": [
+    {
+      "id": "JOB-001",
+      "name": "Q4 Tax Returns - California",
+      "jurisdiction": "CA",
+      "status": "delivered",
+      "sentDate": "2025-01-15",
+      "items": 245,
+      "delivered": 238,
+      "inTransit": 5,
+      "exceptions": 2,
+      "priority": "high"
+    },
+    {
+      "id": "JOB-002",
+      "name": "Annual Filings - New York",
+      "jurisdiction": "NY",
+      "status": "in-transit",
+      "sentDate": "2025-01-18",
+      "items": 182,
+      "delivered": 45,
+      "inTransit": 130,
+      "exceptions": 7,
+      "priority": "standard"
+    },
+    {
+      "id": "JOB-003",
+      "name": "Property Tax Notices - Texas",
+      "jurisdiction": "TX",
+      "status": "pending-approval",
+      "sentDate": null,
+      "items": 320,
+      "delivered": 0,
+      "inTransit": 0,
+      "exceptions": 0,
+      "priority": "standard"
+    },
+    {
+      "id": "JOB-004",
+      "name": "Business License Renewals - Florida",
+      "jurisdiction": "FL",
+      "status": "draft",
+      "sentDate": null,
+      "items": 89,
+      "delivered": 0,
+      "inTransit": 0,
+      "exceptions": 0,
+      "priority": "low"
+    }
+  ],
+  "trackingEvents": [
+    {
+      "timestamp": "2025-01-15 09:00",
+      "event": "Label Created",
+      "location": "Los Angeles, CA"
+    },
+    {
+      "timestamp": "2025-01-15 11:30",
+      "event": "Picked Up",
+      "location": "Los Angeles, CA"
+    },
+    {
+      "timestamp": "2025-01-15 16:45",
+      "event": "In Transit",
+      "location": "Distribution Center"
+    },
+    {
+      "timestamp": "2025-01-16 08:20",
+      "event": "Out for Delivery",
+      "location": "Local Post Office"
+    },
+    {
+      "timestamp": "2025-01-17 14:32",
+      "event": "Delivered",
+      "location": "Recipient Address",
+      "signature": "J. SMITH"
+    }
+  ],
+  "kpis": {
+    "activeJobs": 12,
+    "itemsInTransit": 1847,
+    "deliveredToday": 342,
+    "exceptions": 23
+  }
+}
