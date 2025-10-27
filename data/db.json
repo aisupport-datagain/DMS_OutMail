@@ -5,21 +5,45 @@
       "name": "KPMG Subclient",
       "contact": "Mary Collins",
       "email": "mary.collins@kpmg.com",
-      "phone": "(555) 201-8844"
+      "phone": "(555) 201-8844",
+      "senderOrganizations": [
+        "ORG-001",
+        "ORG-004"
+      ],
+      "recipientOrganizations": [
+        "ORG-001",
+        "ORG-002",
+        "ORG-003"
+      ]
     },
     {
       "id": "ENT-002",
       "name": "BDO Advisory",
       "contact": "Gavin Lee",
       "email": "gavin.lee@bdo.com",
-      "phone": "(555) 201-3355"
+      "phone": "(555) 201-3355",
+      "senderOrganizations": [
+        "ORG-002",
+        "ORG-005"
+      ],
+      "recipientOrganizations": [
+        "ORG-003",
+        "ORG-004"
+      ]
     },
     {
       "id": "ENT-003",
       "name": "Client Services Group",
       "contact": "Kim Patel",
       "email": "kpatel@clientservices.com",
-      "phone": "(555) 409-7788"
+      "phone": "(555) 409-7788",
+      "senderOrganizations": [
+        "ORG-003"
+      ],
+      "recipientOrganizations": [
+        "ORG-001",
+        "ORG-005"
+      ]
     }
   ],
   "organizations": [
@@ -31,17 +55,35 @@
           "id": "ADDR-001",
           "label": "Headquarters",
           "address": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
-          "default": true
+          "default": true,
+          "streetAddress": "123 Business Park Dr, Suite 200",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90025"
         },
         {
           "id": "ADDR-002",
           "label": "Warehouse",
-          "address": "456 Industrial Blvd, Los Angeles, CA 90026"
+          "address": "456 Industrial Blvd, Los Angeles, CA 90026",
+          "streetAddress": "456 Industrial Blvd",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90026"
         },
         {
           "id": "ADDR-003",
           "label": "Billing Dept",
-          "address": "789 Financial Center, Suite 500, Los Angeles, CA 90027"
+          "address": "789 Financial Center, Suite 500, Los Angeles, CA 90027",
+          "streetAddress": "789 Financial Center, Suite 500",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90027"
         }
       ]
     },
@@ -53,12 +95,24 @@
           "id": "ADDR-004",
           "label": "Main Office",
           "address": "456 Industrial Way, San Francisco, CA 94105",
-          "default": true
+          "default": true,
+          "streetAddress": "456 Industrial Way",
+          "city": "San Francisco",
+          "state": "CA",
+          "county": "San Francisco County",
+          "country": "USA",
+          "postalCode": "94105"
         },
         {
           "id": "ADDR-005",
           "label": "Plant A",
-          "address": "321 Factory Ln, Oakland, CA 94601"
+          "address": "321 Factory Ln, Oakland, CA 94601",
+          "streetAddress": "321 Factory Ln",
+          "city": "Oakland",
+          "state": "CA",
+          "county": "Alameda County",
+          "country": "USA",
+          "postalCode": "94601"
         }
       ]
     },
@@ -70,7 +124,13 @@
           "id": "ADDR-006",
           "label": "Corporate Office",
           "address": "789 Commerce St, Suite 100, Sacramento, CA 95814",
-          "default": true
+          "default": true,
+          "streetAddress": "789 Commerce St, Suite 100",
+          "city": "Sacramento",
+          "state": "CA",
+          "county": "Sacramento County",
+          "country": "USA",
+          "postalCode": "95814"
         }
       ]
     },
@@ -82,12 +142,24 @@
           "id": "ADDR-007",
           "label": "HQ",
           "address": "321 Market St, Suite 100, San Diego, CA 92101",
-          "default": true
+          "default": true,
+          "streetAddress": "321 Market St, Suite 100",
+          "city": "San Diego",
+          "state": "CA",
+          "county": "San Diego County",
+          "country": "USA",
+          "postalCode": "92101"
         },
         {
           "id": "ADDR-008",
           "label": "Operations",
-          "address": "654 Operations Way, San Diego, CA 92102"
+          "address": "654 Operations Way, San Diego, CA 92102",
+          "streetAddress": "654 Operations Way",
+          "city": "San Diego",
+          "state": "CA",
+          "county": "San Diego County",
+          "country": "USA",
+          "postalCode": "92102"
         }
       ]
     },
@@ -99,7 +171,13 @@
           "id": "ADDR-009",
           "label": "Main",
           "address": "654 Innovation Blvd, Irvine, CA 92618",
-          "default": true
+          "default": true,
+          "streetAddress": "654 Innovation Blvd",
+          "city": "Irvine",
+          "state": "CA",
+          "county": "Orange County",
+          "country": "USA",
+          "postalCode": "92618"
         }
       ]
     }
@@ -184,7 +262,15 @@
       ],
       "deliveryType": "Certified Mail",
       "email": "contact@johnsonholdings.com",
-      "phone": "(555) 123-4567"
+      "phone": "(555) 123-4567",
+      "addressParts": {
+        "streetAddress": "123 Business Park Dr, Suite 200",
+        "city": "Los Angeles",
+        "state": "CA",
+        "county": "Los Angeles County",
+        "country": "USA",
+        "postalCode": "90025"
+      }
     },
     {
       "id": "REC-002",
@@ -200,7 +286,15 @@
       ],
       "deliveryType": "First Class",
       "email": "admin@smithmfg.com",
-      "phone": "(555) 234-5678"
+      "phone": "(555) 234-5678",
+      "addressParts": {
+        "streetAddress": "456 Industrial Way",
+        "city": "San Francisco",
+        "state": "CA",
+        "county": "San Francisco County",
+        "country": "USA",
+        "postalCode": "94105"
+      }
     },
     {
       "id": "REC-003",
@@ -217,7 +311,15 @@
       "exceptionReason": "Address validation failed - Suite number missing",
       "deliveryType": "Priority",
       "email": "info@davisent.com",
-      "phone": "(555) 345-6789"
+      "phone": "(555) 345-6789",
+      "addressParts": {
+        "streetAddress": "789 Commerce St, Suite 100",
+        "city": "Sacramento",
+        "state": "CA",
+        "county": "Sacramento County",
+        "country": "USA",
+        "postalCode": "95814"
+      }
     }
   ],
   "jobs": [

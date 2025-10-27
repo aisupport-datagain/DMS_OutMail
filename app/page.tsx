@@ -1,36 +1,1069 @@
 'use client';
-// @ts-nocheck
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { 
-  Package, Upload, CheckCircle, AlertCircle, Search, Plus, 
-  FileText, MapPin, Clock, TrendingUp, Users, Archive,
-  ChevronRight, ChevronDown, ChevronUp, Calendar, Filter, Download,
-  Send, Eye, Edit, Trash2, RefreshCw, Check, X, AlertTriangle,
-  Truck, Mail, Building, Phone, AtSign, Hash, User
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Package,
+  Upload,
+  CheckCircle,
+  AlertCircle,
+  Search,
+  Plus,
+  FileText,
+  MapPin,
+  Clock,
+  TrendingUp,
+  Users,
+  Archive,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Filter,
+  Download,
+  Send,
+  Eye,
+  Edit,
+  Trash2,
+  RefreshCw,
+  Check,
+  X,
+  AlertTriangle,
+  Truck,
+  Mail,
+  Building,
+  Phone,
+  AtSign,
+  Hash,
+  User,
+  ArrowLeftRight,
+  CornerUpLeft,
+  ExternalLink
 } from 'lucide-react';
 
 const ENTERPRISE_DROPDOWN_LABEL = 'Select sender enterprises';
 
+const MAIL_STATUS_STYLES: Record<string, string> = {
+  valid: 'bg-green-100 text-green-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+  exception: 'bg-red-100 text-red-700',
+  'manual-review': 'bg-orange-100 text-orange-700'
+};
+
+const MAIL_DETAILS_STORAGE_KEY = 'outmail:selected-mail-group';
+const MAIL_DETAILS_ENTERPRISES_KEY = `${MAIL_DETAILS_STORAGE_KEY}:enterprises`;
+const MAIL_DETAILS_ORGS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:organizations`;
+const MAIL_DETAILS_DOCUMENTS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:documents`;
+
+type MailDetailsDrawerProps = {
+  open: boolean;
+  group: MailGroupRecord;
+  enterprises: EnterpriseRecord[];
+  organizations: OrganizationRecord[];
+  onClose: () => void;
+  onSave: (group: MailGroupRecord) => void;
+  onChange: (group: MailGroupRecord) => void;
+  onUpload: (files: FileList | File[]) => void;
+  onRemoveDocument: (documentId: string) => void;
+  onUpdateOrganization: (organizationId: string, updater: (organization: OrganizationRecord) => OrganizationRecord) => void;
+  onSwapParticipants: () => void;
+};
+
+type ParticipantRole = 'sender' | 'recipient';
+
+type AddressFieldKey =
+  | 'streetAddress'
+  | 'city'
+  | 'state'
+  | 'county'
+  | 'country'
+  | 'postalCode';
+
+const addressFieldConfig: Array<{ key: AddressFieldKey; label: string; span?: number }> = [
+  { key: 'streetAddress', label: 'Street Address', span: 2 },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'county', label: 'County' },
+  { key: 'country', label: 'Country' },
+  { key: 'postalCode', label: 'ZIP Code' }
+];
+
+const cloneAddress = (address?: StructuredAddress | null): StructuredAddress | null =>
+  address ? { ...address } : null;
+
+const cloneParticipant = (participant?: ParticipantRecord | null): ParticipantRecord | null =>
+  participant
+    ? {
+        ...participant,
+        address: cloneAddress(participant.address)
+      }
+    : null;
+
+const ensureParticipant = (role: ParticipantRole, group: MailGroupRecord): ParticipantRecord => {
+  if (role === 'sender') {
+    return (
+      cloneParticipant(group.sender) || {
+        enterpriseId: group.senderEnterpriseId || null,
+        organizationId: group.sender?.organizationId || null,
+        organizationName: group.sender?.organizationName || group.senderContact || '',
+        contactName: group.senderContact || '',
+        email: group.senderEmail || '',
+        phone: group.senderPhone || '',
+        addressId: group.sender?.addressId || null,
+        address: cloneAddress(group.sender?.address) || emptyAddress()
+      }
+    );
+  }
+
+  return (
+    cloneParticipant(group.recipient) || {
+      enterpriseId: group.senderEnterpriseId || null,
+      organizationId: group.recipient?.organizationId || group.organizationId || null,
+      organizationName: group.recipient?.organizationName || group.name || '',
+      contactName: group.recipientName || group.recipient?.contactName || group.name || '',
+      email: group.email || '',
+      phone: group.phone || '',
+      addressId: group.recipient?.addressId || null,
+      address: cloneAddress(group.recipient?.address) || emptyAddress()
+    }
+  );
+};
+
+const applyParticipantToGroup = (
+  role: ParticipantRole,
+  group: MailGroupRecord,
+  participant: ParticipantRecord
+): MailGroupRecord => {
+  if (role === 'sender') {
+    return {
+      ...group,
+      sender: participant,
+      senderEnterpriseId: participant.enterpriseId || group.senderEnterpriseId || null,
+      senderContact: participant.contactName || '',
+      senderEmail: participant.email || '',
+      senderPhone: participant.phone || '',
+      senderAddress: participant.address ? formatStructuredAddress(participant.address) : ''
+    };
+  }
+
+  const formattedAddress = participant.address ? formatStructuredAddress(participant.address) : '';
+  return {
+    ...group,
+    recipient: participant,
+    recipientName: participant.contactName || participant.organizationName || group.recipientName || '',
+    name: participant.organizationName || group.name,
+    organizationId: participant.organizationId || group.organizationId || null,
+    address: formattedAddress,
+    email: participant.email || group.email || '',
+    phone: participant.phone || group.phone || ''
+  };
+};
+
+const MailDetailsDrawer: React.FC<MailDetailsDrawerProps> = ({
+  open,
+  group,
+  enterprises,
+  organizations,
+  onClose,
+  onSave,
+  onChange,
+  onUpload,
+  onRemoveDocument,
+  onUpdateOrganization,
+  onSwapParticipants
+}) => {
+  const [form, setForm] = useState<MailGroupRecord>(group);
+
+  useEffect(() => {
+    setForm(group);
+  }, [group]);
+
+  if (!open || !form) {
+    return null;
+  }
+
+  const updateForm = (updater: (prev: MailGroupRecord) => MailGroupRecord) => {
+    setForm(prev => {
+      const base: MailGroupRecord = {
+        ...prev,
+        sender: cloneParticipant(prev.sender),
+        recipient: cloneParticipant(prev.recipient)
+      };
+      const next = updater(base);
+      onChange(next);
+      return next;
+    });
+  };
+
+  const getOrganizationsForEnterprise = (enterpriseId: string | null, role: ParticipantRole) => {
+    if (!enterpriseId) return organizations;
+    const enterprise = enterprises.find(ent => ent.id === enterpriseId);
+    const ids =
+      role === 'sender' ? enterprise?.senderOrganizations : enterprise?.recipientOrganizations;
+    if (!ids || !ids.length) return organizations;
+    return organizations.filter(org => ids.includes(org.id));
+  };
+
+  const handleEnterpriseChange = (enterpriseId: string) => {
+    const normalized = enterpriseId || null;
+    const enterprise = enterprises.find(ent => ent.id === normalized);
+    const senderOrgs = getOrganizationsForEnterprise(normalized, 'sender');
+    const recipientOrgs = getOrganizationsForEnterprise(normalized, 'recipient');
+    const defaultSenderOrg = senderOrgs[0] || null;
+    const defaultRecipientOrg = recipientOrgs[0] || defaultSenderOrg || null;
+    const defaultSenderAddress =
+      defaultSenderOrg?.addresses.find(addr => addr.default) || defaultSenderOrg?.addresses[0] || null;
+    const defaultRecipientAddress =
+      defaultRecipientOrg?.addresses.find(addr => addr.default) || defaultRecipientOrg?.addresses[0] || null;
+
+    updateForm(prev => {
+      const nextSender: ParticipantRecord = {
+        ...(ensureParticipant('sender', prev)),
+        enterpriseId: normalized,
+        organizationId: defaultSenderOrg?.id || null,
+        organizationName: defaultSenderOrg?.name || enterprise?.name || '',
+        contactName: prev.sender?.contactName || enterprise?.contact || '',
+        email: prev.sender?.email || enterprise?.email || '',
+        phone: prev.sender?.phone || enterprise?.phone || '',
+        addressId: defaultSenderAddress?.id || prev.sender?.addressId || null,
+        address: defaultSenderAddress
+          ? normalizeStructuredAddress(defaultSenderAddress)
+          : cloneAddress(prev.sender?.address) || emptyAddress()
+      };
+
+      const nextRecipient: ParticipantRecord = {
+        ...(ensureParticipant('recipient', prev)),
+        enterpriseId: normalized,
+        organizationId: defaultRecipientOrg?.id || null,
+        organizationName: defaultRecipientOrg?.name || prev.recipient?.organizationName || '',
+        contactName:
+          prev.recipient?.contactName ||
+          prev.recipientName ||
+          defaultRecipientOrg?.name ||
+          '',
+        addressId: defaultRecipientAddress?.id || prev.recipient?.addressId || null,
+        address: defaultRecipientAddress
+          ? normalizeStructuredAddress(defaultRecipientAddress)
+          : cloneAddress(prev.recipient?.address) || emptyAddress()
+      };
+
+      return {
+        ...applyParticipantToGroup(
+          'recipient',
+          applyParticipantToGroup('sender', prev, nextSender),
+          nextRecipient
+        ),
+        senderEnterpriseId: normalized
+      };
+    });
+  };
+
+  const handleParticipantOrganizationChange = (role: ParticipantRole, organizationId: string) => {
+    const normalized = organizationId || null;
+    const organization = organizations.find(org => org.id === normalized) || null;
+    const defaultAddress =
+      organization?.addresses.find(addr => addr.default) || organization?.addresses[0] || null;
+
+    updateForm(prev => {
+      const participant = ensureParticipant(role, prev);
+      const updated: ParticipantRecord = {
+        ...participant,
+        organizationId: normalized,
+        organizationName: organization?.name || participant.organizationName || '',
+        addressId: defaultAddress?.id || participant.addressId || null,
+        address: defaultAddress
+          ? normalizeStructuredAddress(defaultAddress)
+          : participant.address || emptyAddress()
+      };
+      if (role === 'recipient' && !updated.contactName) {
+        updated.contactName = organization?.name || participant.contactName || '';
+      }
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const handleParticipantFieldChange = (
+    role: ParticipantRole,
+    field: 'contactName' | 'email' | 'phone',
+    value: string
+  ) => {
+    updateForm(prev => {
+      const participant = ensureParticipant(role, prev);
+      const updated = { ...participant, [field]: value };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const handleAddressFieldChange = (
+    role: ParticipantRole,
+    key: keyof StructuredAddress,
+    value: string
+  ) => {
+    updateForm(prev => {
+      const participant = ensureParticipant(role, prev);
+      const address = participant.address ? { ...participant.address } : emptyAddress();
+      const updated = {
+        ...participant,
+        address: normalizeStructuredAddress({ ...address, [key]: value })
+      };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const handleAddressSelect = (role: ParticipantRole, addressId: string) => {
+    updateForm(prev => {
+      const participant = ensureParticipant(role, prev);
+      const organization = organizations.find(org => org.id === participant.organizationId);
+      const selected = organization?.addresses.find(addr => addr.id === addressId);
+      if (!selected) {
+        return prev;
+      }
+      const updated = {
+        ...participant,
+        addressId: selected.id,
+        address: normalizeStructuredAddress(selected)
+      };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const persistAddressToOrganization = (role: ParticipantRole) => {
+    const participant = role === 'sender' ? form.sender : form.recipient;
+    if (!participant?.organizationId || !participant.address) {
+      return;
+    }
+    const organizationId = participant.organizationId;
+    const addressId = participant.addressId || participant.address.id || `ADDR-${Date.now()}`;
+    const payload = normalizeStructuredAddress({ ...participant.address, id: addressId });
+    onUpdateOrganization(organizationId, (organization) => {
+      const remaining = organization.addresses.filter(addr => addr.id !== addressId);
+      return {
+        ...organization,
+        addresses: [...remaining, payload]
+      };
+    });
+    updateForm(prev => {
+      const participantRecord = ensureParticipant(role, prev);
+      const updated = {
+        ...participantRecord,
+        addressId: payload.id || addressId,
+        address: payload
+      };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const handleAddAddress = (role: ParticipantRole) => {
+    const participant = role === 'sender' ? form.sender : form.recipient;
+    if (!participant?.organizationId) {
+      alert('Select an organization before adding addresses.');
+      return;
+    }
+    const newId = `ADDR-${Date.now()}`;
+    const newAddress = normalizeStructuredAddress({
+      id: newId,
+      label: 'New Address',
+      streetAddress: '',
+      city: '',
+      state: '',
+      county: '',
+      country: '',
+      postalCode: ''
+    });
+    onUpdateOrganization(participant.organizationId, (organization) => ({
+      ...organization,
+      addresses: [...organization.addresses, newAddress]
+    }));
+    updateForm(prev => {
+      const participantRecord = ensureParticipant(role, prev);
+      const updated = {
+        ...participantRecord,
+        addressId: newId,
+        address: newAddress
+      };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const handleRemoveAddress = (role: ParticipantRole, addressId: string) => {
+    const participant = role === 'sender' ? form.sender : form.recipient;
+    if (!participant?.organizationId) {
+      return;
+    }
+    onUpdateOrganization(participant.organizationId, (organization) => ({
+      ...organization,
+      addresses: organization.addresses.filter(addr => addr.id !== addressId)
+    }));
+    updateForm(prev => {
+      const participantRecord = ensureParticipant(role, prev);
+      if (
+        participantRecord.addressId !== addressId &&
+        participantRecord.address?.id !== addressId
+      ) {
+        return prev;
+      }
+      const updated = {
+        ...participantRecord,
+        addressId: null,
+        address: emptyAddress()
+      };
+      return applyParticipantToGroup(role, prev, updated);
+    });
+  };
+
+  const documents = (form.documents || []).map((doc: any) =>
+    typeof doc === 'string' ? { id: doc, name: doc } : doc
+  );
+
+  const renderParticipantSection = (role: ParticipantRole) => {
+    const participant = role === 'sender' ? form.sender : form.recipient;
+    const isSender = role === 'sender';
+    const enterpriseId =
+      (isSender ? participant?.enterpriseId : form.sender?.enterpriseId) ||
+      form.senderEnterpriseId ||
+      null;
+    const organization = participant?.organizationId
+      ? organizations.find(org => org.id === participant.organizationId) || null
+      : null;
+    const addresses = organization?.addresses || [];
+    return (
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">
+            {isSender ? 'Sender Organization' : 'Recipient Organization'}
+          </h3>
+          {isSender && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Enterprise</span>
+              <select
+                value={enterpriseId || ''}
+                onChange={(event) => handleEnterpriseChange(event.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select</option>
+                {enterprises.map(ent => (
+                  <option key={ent.id} value={ent.id}>{ent.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs uppercase text-gray-400 mb-1">Organization</label>
+            <select
+              value={participant?.organizationId || ''}
+              onChange={(event) => handleParticipantOrganizationChange(role, event.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select organization</option>
+              {getOrganizationsForEnterprise(enterpriseId, role).map(org => (
+                <option key={org.id} value={org.id}>{org.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs uppercase text-gray-400 mb-1">
+              {isSender ? 'Contact Person' : 'Recipient Name'}
+            </label>
+            <input
+              type="text"
+              value={participant?.contactName || ''}
+              onChange={(event) => handleParticipantFieldChange(role, 'contactName', event.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={isSender ? 'Contact name' : 'Primary recipient'}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs uppercase text-gray-400 mb-1">Email</label>
+            <input
+              type="email"
+              value={participant?.email || ''}
+              onChange={(event) => handleParticipantFieldChange(role, 'email', event.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="email@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-xs uppercase text-gray-400 mb-1">Phone</label>
+            <input
+              type="text"
+              value={participant?.phone || ''}
+              onChange={(event) => handleParticipantFieldChange(role, 'phone', event.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="(555) 123-4567"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <label className="text-xs uppercase text-gray-400">Link Saved Address</label>
+              <select
+                value={participant?.addressId || participant?.address?.id || ''}
+                onChange={(event) => handleAddressSelect(role, event.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Choose...</option>
+                {addresses.map(addr => (
+                  <option key={addr.id} value={addr.id || addr.streetAddress}>
+                    {addr.label || addr.streetAddress || addr.postalCode || 'Address'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleAddAddress(role)}
+                className="px-2 py-1 text-xs border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50"
+              >
+                Add Address
+              </button>
+              {(participant?.addressId || participant?.address?.id) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleRemoveAddress(role, participant?.addressId || participant?.address?.id || '')
+                  }
+                  className="px-2 py-1 text-xs border border-red-200 text-red-600 rounded-md hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => persistAddressToOrganization(role)}
+                className="px-2 py-1 text-xs border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {addressFieldConfig.map(field => (
+              <div
+                key={`${role}-${field.key}`}
+                className={field.span === 2 ? 'sm:col-span-2' : undefined}
+              >
+                <label className="block text-xs uppercase text-gray-400 mb-1">
+                  {field.label}
+                </label>
+                <input
+                  type="text"
+                  value={participant?.address?.[field.key] || ''}
+                  onChange={(event) => handleAddressFieldChange(role, field.key, event.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={field.label}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black bg-opacity-30" onClick={onClose}></div>
+      <div className="absolute right-0 top-0 h-full w-full max-w-2xl bg-white shadow-xl flex flex-col">
+        <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase text-gray-400">Organisation Group</p>
+            <h2 className="text-xl font-semibold text-gray-900 mt-1">
+              {form.name || form.recipientName || form.recipient?.organizationName || 'New Mail'}
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Task ID: {form.taskId || form.id}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSwapParticipants}
+              className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 hover:bg-gray-100 flex items-center"
+            >
+              <CornerUpLeft className="w-4 h-4 mr-1" />
+              Switch Roles
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+          {renderParticipantSection('sender')}
+          {renderParticipantSection('recipient')}
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Documents ({documents.length})</h3>
+              <label className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 cursor-pointer">
+                <Upload className="w-4 h-4 mr-1" />
+                Upload
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf"
+                  onChange={(event) => {
+                    if (event.target.files?.length) {
+                      onUpload(event.target.files);
+                      event.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            {documents.length ? (
+              <ul className="divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                {documents.map((doc) => (
+                  <li key={doc.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <p className="text-gray-900">{doc.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {doc.pages ? `${doc.pages} pages` : 'Unknown pages'} • {doc.size || 'Size unknown'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onRemoveDocument(doc.id)}
+                      className="text-xs text-red-600 hover:text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="border border-dashed border-gray-300 rounded-lg p-4 text-center text-sm text-gray-500">
+                No documents linked yet. Upload files above or drop them onto the card.
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Delivery & Tracking</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs uppercase text-gray-400 mb-1">Delivery Type</label>
+                <select
+                  value={form.deliveryType || 'Certified Mail'}
+                  onChange={(event) =>
+                    updateForm(prev => ({
+                      ...prev,
+                      deliveryType: event.target.value
+                    }))
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option>Certified Mail</option>
+                  <option>First Class</option>
+                  <option>Priority</option>
+                  <option>Express</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs uppercase text-gray-400 mb-1">Status</label>
+                <select
+                  value={form.status || 'pending'}
+                  onChange={(event) =>
+                    updateForm(prev => ({
+                      ...prev,
+                      status: event.target.value
+                    }))
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="valid">Valid</option>
+                  <option value="exception">Exception</option>
+                  <option value="manual-review">Manual Review</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs uppercase text-gray-400 mb-1">Tracking Number</label>
+                <input
+                  type="text"
+                  value={form.trackingNumber || ''}
+                  onChange={(event) =>
+                    updateForm(prev => ({
+                      ...prev,
+                      trackingNumber: event.target.value
+                    }))
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Tracking code"
+                />
+              </div>
+              <div>
+                <label className="block text-xs uppercase text-gray-400 mb-1">Notes</label>
+                <input
+                  type="text"
+                  value={form.notes || ''}
+                  onChange={(event) =>
+                    updateForm(prev => ({
+                      ...prev,
+                      notes: event.target.value
+                    }))
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Internal notes"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="px-6 py-5 border-t border-gray-200 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(form)}
+            className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+          >
+            <Check className="w-4 h-4 mr-2" />
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type StructuredAddress = {
+  id?: string;
+  label?: string;
+  streetAddress: string;
+  city: string;
+  state: string;
+  county: string;
+  country: string;
+  postalCode: string;
+  default?: boolean;
+};
+
+type OrganizationRecord = {
+  id: string;
+  name: string;
+  addresses: StructuredAddress[];
+};
+
+type EnterpriseRecord = {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+  phone: string;
+  senderOrganizations?: string[];
+  recipientOrganizations?: string[];
+};
+
+type DocumentRecord = {
+  id: string;
+  name: string;
+  pages?: number;
+  size?: string;
+  uploadedAt?: string;
+};
+
+type ParticipantRecord = {
+  enterpriseId: string | null;
+  organizationId: string | null;
+  organizationName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  addressId?: string | null;
+  address?: StructuredAddress | null;
+};
+
+type MailGroupRecord = {
+  id: string;
+  taskId: string;
+  name: string;
+  recipientName?: string;
+  status: string;
+  deliveryType: string;
+  documents: DocumentRecord[];
+  sender: ParticipantRecord;
+  recipient: ParticipantRecord;
+  trackingNumber?: string | null;
+  deliveredDate?: string | null;
+  exceptionReason?: string;
+  // Legacy fields kept for backwards compatibility during refactor
+  senderEnterpriseId?: string | null;
+  senderContact?: string;
+  senderEmail?: string;
+  senderPhone?: string;
+  senderAddress?: string;
+  organizationId?: string | null;
+  address?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+};
+
+const emptyAddress = (): StructuredAddress => ({
+  streetAddress: '',
+  city: '',
+  state: '',
+  county: '',
+  country: '',
+  postalCode: ''
+});
+
+const normalizeStructuredAddress = (
+  input?: Partial<StructuredAddress> | null,
+  fallback?: Partial<StructuredAddress>
+): StructuredAddress => {
+  const source = input || fallback || {};
+  return {
+    id: source.id,
+    label: source.label,
+    streetAddress: source.streetAddress || '',
+    city: source.city || '',
+    state: source.state || '',
+    county: source.county || '',
+    country: source.country || '',
+    postalCode: source.postalCode || '',
+    default: source.default
+  };
+};
+
+const formatStructuredAddress = (address?: StructuredAddress | null) => {
+  if (!address) return '';
+  const segments = [
+    address.streetAddress,
+    address.city && `${address.city}, ${address.state}`.trim(),
+    address.postalCode
+  ].filter(Boolean);
+  const countrySuffix = address.country ? `${address.country}` : '';
+  const countySuffix = address.county ? `${address.county}` : '';
+  const base = segments.join(', ');
+  return [base, countySuffix, countrySuffix].filter(Boolean).join(' • ');
+};
+
+type MailGroupCardProps = {
+  group: MailGroupRecord;
+  enterprises: EnterpriseRecord[];
+  organizations: OrganizationRecord[];
+  onEdit: () => void;
+  onDelete: () => void;
+  onFileUpload: (files: FileList | File[]) => void;
+  onDeliveryChange: (value: string) => void;
+  onOpenDetails: () => void;
+  onSwapParticipants: () => void;
+};
+
+const MailGroupCard: React.FC<MailGroupCardProps> = ({
+  group,
+  enterprises,
+  organizations,
+  onEdit,
+  onDelete,
+  onFileUpload,
+  onDeliveryChange,
+  onOpenDetails,
+  onSwapParticipants
+}) => {
+  const senderEnterprise = enterprises.find(ent => ent.id === group.sender?.enterpriseId || group.senderEnterpriseId);
+  const senderOrganization = organizations.find(org => org.id === group.sender?.organizationId || group.organizationId);
+  const recipientOrganization = organizations.find(org => org.id === group.recipient?.organizationId || group.organizationId);
+  const documents = (group.documents || []).map((doc) => typeof doc === 'string'
+    ? { id: doc, name: doc }
+    : doc
+  );
+  const displayName = group.name || group.recipientName || 'Unnamed Mail';
+  const senderAddress = formatStructuredAddress(group.sender?.address) || group.senderAddress;
+  const recipientAddress = formatStructuredAddress(group.recipient?.address) || group.address;
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (event.dataTransfer?.files?.length) {
+      onFileUpload(event.dataTransfer.files);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 flex flex-col space-y-5">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs uppercase text-gray-400 mb-1">Mail Group</p>
+          <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+          <p className="text-xs text-gray-500 mt-1">Task ID: {group.taskId || group.id}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenDetails}
+            className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 flex items-center"
+          >
+            <ExternalLink className="w-4 h-4 mr-1" />
+            View
+          </button>
+          <button
+            onClick={onEdit}
+            className="px-3 py-1.5 text-sm text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 flex items-center"
+          >
+            <Edit className="w-4 h-4 mr-1" />
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 flex items-center"
+          >
+            <Trash2 className="w-4 h-4 mr-1" />
+            Remove
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs uppercase text-gray-400 mb-1">Sender</p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {senderOrganization?.name || senderEnterprise?.name || 'Select sender'}
+              </p>
+              {senderAddress ? (
+                <p className="text-xs text-gray-500 mt-1">{senderAddress}</p>
+              ) : senderEnterprise ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  {senderEnterprise.contact} • {senderEnterprise.email}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400 mt-1">No sender details</p>
+              )}
+            </div>
+            <button
+              className="p-1.5 rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              onClick={onSwapParticipants}
+              title="Swap sender and recipient"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-gray-400 mb-1">Recipient</p>
+          <p className="text-sm font-medium text-gray-900">
+            {recipientOrganization?.name || displayName}
+          </p>
+          {recipientAddress ? (
+            <p className="text-xs text-gray-500 mt-1">{recipientAddress}</p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-1">No address on file</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs uppercase text-gray-400 mb-2">Documents</p>
+        {documents.length ? (
+          <div className="flex flex-wrap gap-2">
+            {documents.map((doc) => (
+              <span
+                key={doc.id}
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700"
+              >
+                <FileText className="w-3 h-3 mr-1" />
+                {doc.name.length > 28 ? `${doc.name.slice(0, 25)}...` : doc.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No documents attached yet</p>
+        )}
+      </div>
+
+      <div
+        className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+        <p className="text-sm text-gray-600 mb-2">Drag & drop files here</p>
+        <label className="inline-block px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer">
+          Browse Files
+          <input
+            type="file"
+            className="hidden"
+            multiple
+            accept=".pdf"
+            onChange={(event) => {
+              if (event.target.files?.length) {
+                onFileUpload(event.target.files);
+                event.target.value = '';
+              }
+            }}
+          />
+        </label>
+        <p className="text-xs text-gray-400 mt-2">PDF only · up to 100MB each</p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-xs uppercase text-gray-400 block mb-1">Delivery Type</label>
+          <select
+            value={group.deliveryType || 'Certified Mail'}
+            onChange={(event) => onDeliveryChange(event.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option>Certified Mail</option>
+            <option>First Class</option>
+            <option>Priority</option>
+            <option>Express</option>
+          </select>
+        </div>
+        <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${MAIL_STATUS_STYLES[group.status] || 'bg-gray-100 text-gray-600'}`}>
+          {group.status ? group.status.replace('-', ' ') : 'pending'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const OutboundMailSystem = () => {
+  const router = useRouter();
   const [currentView, setCurrentView] = useState('dashboard');
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedJob, setSelectedJob] = useState(null);
-  const [showAddRecipient, setShowAddRecipient] = useState(false);
-  const [editingRecipient, setEditingRecipient] = useState(null);
-  const [showImportCSV, setShowImportCSV] = useState(false);
   const [showQuickMail, setShowQuickMail] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isMailDrawerOpen, setIsMailDrawerOpen] = useState(false);
+  const [editingMailGroup, setEditingMailGroup] = useState<MailGroupRecord | null>(null);
+  const [isCreatingMailGroup, setIsCreatingMailGroup] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<DocumentRecord[]>([]);
   const [addressExceptions, setAddressExceptions] = useState([]);
   const [showFixAddress, setShowFixAddress] = useState(false);
   const [addressToFix, setAddressToFix] = useState(null);
   const [validationProgress, setValidationProgress] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
 
-  const [organizations, setOrganizations] = useState([]);
+  const [organizations, setOrganizations] = useState<OrganizationRecord[]>([]);
   const [existingRecipients, setExistingRecipients] = useState([]);
-  const [enterprises, setEnterprises] = useState([]);
-  const [recipients, setRecipients] = useState([]);
+  const [enterprises, setEnterprises] = useState<EnterpriseRecord[]>([]);
+  const [mailGroups, setMailGroups] = useState<MailGroupRecord[]>([]);
+  const recipients = mailGroups;
+  const setRecipients = setMailGroups;
   const [sampleJobs, setSampleJobs] = useState([]);
   const [trackingEvents, setTrackingEvents] = useState([]);
   const [kpis, setKpis] = useState({
@@ -43,6 +1076,7 @@ const OutboundMailSystem = () => {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataError, setDataError] = useState(null);
   const [enterpriseDropdownOpen, setEnterpriseDropdownOpen] = useState(false);
+  const enterpriseDropdownRef = useRef<HTMLDivElement | null>(null);
   const [archiveFilters, setArchiveFilters] = useState({
     query: '',
     jurisdiction: 'all',
@@ -121,11 +1155,154 @@ const OutboundMailSystem = () => {
           throw new Error('Failed to fetch data');
         }
         const payload = await response.json();
-        setEnterprises(payload.enterprises || []);
-        setOrganizations(payload.organizations || []);
+        const enterprisesData: EnterpriseRecord[] = (payload.enterprises || []).map((entry: any) => ({
+          id: entry.id,
+          name: entry.name,
+          contact: entry.contact,
+          email: entry.email,
+          phone: entry.phone,
+          senderOrganizations: entry.senderOrganizations || [],
+          recipientOrganizations: entry.recipientOrganizations || []
+        }));
+        const organizationsData: OrganizationRecord[] = (payload.organizations || []).map((org: any) => ({
+          ...org,
+          addresses: (org.addresses || []).map((addr: any) => normalizeStructuredAddress(addr))
+        }));
+        const uploaded: DocumentRecord[] = (payload.uploadedFiles || []).map((file: any, index: number) => ({
+          id: file.id || `UP-${index}`,
+          name: file.name,
+          pages: file.pages,
+          size: file.size
+        }));
+        const lookupByName = uploaded.reduce((acc, file) => {
+          acc[file.name] = file;
+          return acc;
+        }, {} as Record<string, DocumentRecord>);
+
+        setEnterprises(enterprisesData);
+        setOrganizations(organizationsData);
         setExistingRecipients(payload.existingRecipients || []);
-        setUploadedFiles(payload.uploadedFiles || []);
-        setRecipients(payload.recipients || []);
+        setUploadedFiles(uploaded);
+
+        const normalizedMailGroups: MailGroupRecord[] = (payload.recipients || []).map((recipient: any, index: number) => {
+          const mailId = recipient.id || `MAIL-${String(index + 1).padStart(3, '0')}`;
+          const defaultEnterpriseId = recipient.senderEnterpriseId || enterprisesData[0]?.id || null;
+          const enterpriseDetails = enterprisesData.find(ent => ent.id === defaultEnterpriseId);
+          const senderOrgId =
+            recipient.senderOrganizationId ||
+            enterpriseDetails?.senderOrganizations?.[0] ||
+            recipient.organizationId ||
+            null;
+          const senderOrg = senderOrgId
+            ? organizationsData.find(org => org.id === senderOrgId) || null
+            : null;
+          const senderAddressSource =
+            (senderOrg?.addresses || []).find(addr => addr.id === recipient.senderAddressId) ||
+            (senderOrg?.addresses || []).find(addr => addr.default) ||
+            (senderOrg?.addresses || [])[0] ||
+            null;
+          const senderAddress = senderAddressSource
+            ? normalizeStructuredAddress(senderAddressSource)
+            : recipient.senderAddressParts
+            ? normalizeStructuredAddress(recipient.senderAddressParts)
+            : null;
+
+          const recipientOrgId =
+            recipient.organizationId ||
+            enterpriseDetails?.recipientOrganizations?.[0] ||
+            null;
+          const recipientOrg = recipientOrgId
+            ? organizationsData.find(org => org.id === recipientOrgId) || null
+            : null;
+          const recipientAddress = recipient.addressParts
+            ? normalizeStructuredAddress(recipient.addressParts)
+            : (recipientOrg?.addresses || []).find(addr => addr.id === recipient.addressId)
+            || (recipientOrg?.addresses || []).find(addr => addr.default)
+            || (recipientOrg?.addresses || [])[0]
+            || null;
+          const normalizedRecipientAddress = recipientAddress
+            ? normalizeStructuredAddress(recipientAddress)
+            : null;
+
+          const documents = (recipient.documents || []).map((doc, docIndex) => {
+            if (!doc) return null;
+            if (typeof doc === 'object') {
+              return {
+                id: doc.id || `${mailId}-DOC-${docIndex}`,
+                name: doc.name,
+                pages: doc.pages || Math.floor(Math.random() * 120) + 30,
+                size: doc.size || 'N/A'
+              };
+            }
+            const match = lookupByName[doc];
+            if (match) {
+              return {
+                id: `${mailId}-DOC-${docIndex}`,
+                name: match.name,
+                pages: match.pages,
+                size: match.size
+              };
+            }
+            return {
+              id: `${mailId}-DOC-${docIndex}`,
+              name: doc,
+              pages: Math.floor(Math.random() * 120) + 30,
+              size: 'Unknown'
+            };
+          }).filter(Boolean);
+
+          const derivedRecipientName =
+            recipient.recipientName ||
+            recipient.name ||
+            recipientOrg?.name ||
+            '';
+
+          const senderParticipant: ParticipantRecord = {
+            enterpriseId: defaultEnterpriseId,
+            organizationId: senderOrg?.id || null,
+            organizationName: senderOrg?.name || enterpriseDetails?.name,
+            contactName: recipient.senderContact || enterpriseDetails?.contact || '',
+            email: recipient.senderEmail || enterpriseDetails?.email || '',
+            phone: recipient.senderPhone || enterpriseDetails?.phone || '',
+            addressId: senderAddress?.id || null,
+            address: senderAddress
+          };
+
+          const recipientParticipant: ParticipantRecord = {
+            enterpriseId: defaultEnterpriseId,
+            organizationId: recipientOrg?.id || null,
+            organizationName: recipientOrg?.name || derivedRecipientName,
+            contactName: derivedRecipientName,
+            email: recipient.email || '',
+            phone: recipient.phone || '',
+            addressId: normalizedRecipientAddress?.id || null,
+            address: normalizedRecipientAddress
+          };
+
+          return {
+            ...recipient,
+            id: mailId,
+            taskId: recipient.taskId || mailId,
+            name: recipient.name || recipientOrg?.name || derivedRecipientName,
+            recipientName: derivedRecipientName,
+            status: recipient.status || 'pending',
+            deliveryType: recipient.deliveryType || 'Certified Mail',
+            documents: documents as DocumentRecord[],
+            sender: senderParticipant,
+            recipient: recipientParticipant,
+            senderEnterpriseId: defaultEnterpriseId,
+            senderContact: senderParticipant.contactName,
+            senderEmail: senderParticipant.email,
+            senderPhone: senderParticipant.phone,
+            senderAddress: senderParticipant.address ? formatStructuredAddress(senderParticipant.address) : recipient.senderAddress || '',
+            organizationId: recipientOrg?.id || null,
+            address: recipientParticipant.address ? formatStructuredAddress(recipientParticipant.address) : recipient.address || '',
+            email: recipient.email || '',
+            phone: recipient.phone || ''
+          } as MailGroupRecord;
+        });
+
+        setMailGroups(normalizedMailGroups);
         setSampleJobs(payload.jobs || []);
         setTrackingEvents(payload.trackingEvents || []);
         setKpis(payload.kpis || {
@@ -143,7 +1320,7 @@ const OutboundMailSystem = () => {
         setOrganizations([]);
         setExistingRecipients([]);
         setUploadedFiles([]);
-        setRecipients([]);
+        setMailGroups([]);
         setSampleJobs([]);
         setTrackingEvents([]);
         setArchiveResults([]);
@@ -162,12 +1339,16 @@ const OutboundMailSystem = () => {
   }, []);
 
   useEffect(() => {
+    const allDocs = mailGroups.flatMap(group => 
+      (group.documents || []).map(doc => doc.name)
+    );
+    const uniqueDocs = Array.from(new Set(allDocs));
     setJobData(prev => ({
       ...prev,
-      documents: uploadedFiles.map(file => file.name),
-      recipients
+      documents: uniqueDocs,
+      recipients: mailGroups
     }));
-  }, [uploadedFiles, recipients]);
+  }, [mailGroups]);
 
   useEffect(() => {
     if (wizardStep !== 1 && enterpriseDropdownOpen) {
@@ -175,100 +1356,371 @@ const OutboundMailSystem = () => {
     }
   }, [wizardStep, enterpriseDropdownOpen]);
 
-  // Handler functions
-  const handleAddRecipient = (newRecipient) => {
-    const recipientId = `REC-${String(recipients.length + 1).padStart(3, '0')}`;
-    setRecipients([...recipients, {
-      ...newRecipient,
-      id: recipientId,
-      trackingNumber: null,
-      status: 'pending',
-      deliveredDate: null
-    }]);
-    setShowAddRecipient(false);
-  };
-
-  const handleEditRecipient = (updatedRecipient) => {
-    setRecipients(recipients.map(r => 
-      r.id === updatedRecipient.id ? updatedRecipient : r
-    ));
-    setEditingRecipient(null);
-  };
-
-  const handleDeleteRecipient = (recipientId) => {
-    if (window.confirm('Are you sure you want to delete this recipient?')) {
-      setRecipients(recipients.filter(r => r.id !== recipientId));
+  useEffect(() => {
+    if (!enterpriseDropdownOpen) {
+      return;
     }
-  };
 
-  const handleFileUpload = (event) => {
-    const list = event.target.files ? Array.from(event.target.files) : [];
-    const newFiles = list.map((file, index) => ({
-      id: uploadedFiles.length + index + 1,
-      name: file.name,
-      pages: Math.floor(Math.random() * 200) + 50,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-    }));
-    setUploadedFiles(prev => [...prev, ...newFiles]);
-  };
-
-  const handleDeleteFile = (fileId) => {
-    if (window.confirm('Are you sure you want to delete this file?')) {
-      setUploadedFiles(uploadedFiles.filter(f => f.id !== fileId));
-    }
-  };
-
-  const handleImportCSV = () => {
-    const fallbackDocs = uploadedFiles.map(file => file.name);
-
-    const csvRecipients = [
-      {
-        name: 'Anderson Corp',
-        address: '321 Market St, Suite 100, San Diego, CA 92101',
-        email: 'billing@andersoncorp.com',
-        phone: '(555) 456-7890',
-        documents: fallbackDocs.length ? [fallbackDocs[0]] : [],
-        deliveryType: 'Certified Mail'
-      },
-      {
-        name: 'Baker Industries',
-        address: '654 Innovation Blvd, Irvine, CA 92618',
-        email: 'accounts@bakerindustries.com',
-        phone: '(555) 567-8901',
-        documents: fallbackDocs.length > 1 ? [fallbackDocs[1]] : fallbackDocs.slice(0, 1),
-        deliveryType: 'First Class'
-      },
-      {
-        name: 'Carter Logistics',
-        address: '987 Distribution Way, Long Beach, CA 90802',
-        email: 'finance@carterlogistics.com',
-        phone: '(555) 678-9012',
-        documents: fallbackDocs.length > 2 ? [fallbackDocs[2]] : fallbackDocs.slice(0, 1),
-        deliveryType: 'Priority'
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+      if (
+        enterpriseDropdownRef.current &&
+        target instanceof Node &&
+        !enterpriseDropdownRef.current.contains(target)
+      ) {
+        setEnterpriseDropdownOpen(false);
       }
-    ];
+    };
 
-    const newRecipients = csvRecipients.map((recipient, index) => ({
-      ...recipient,
-      id: `REC-${String(recipients.length + index + 1).padStart(3, '0')}`,
-      trackingNumber: null,
-      status: 'pending',
-      deliveredDate: null
+    document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('touchstart', handleClickOutside);
+      };
+    }, [enterpriseDropdownOpen]);
+
+  useEffect(() => {
+    if (isLoadingData) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const rawGroup = window.sessionStorage.getItem(MAIL_DETAILS_STORAGE_KEY);
+      if (rawGroup) {
+        const parsed = JSON.parse(rawGroup);
+        if (parsed?.id) {
+          setMailGroups(prev =>
+            prev.map(group => (group.id === parsed.id ? parsed : group))
+          );
+        }
+      }
+      const rawEnterprises = window.sessionStorage.getItem(MAIL_DETAILS_ENTERPRISES_KEY);
+      if (rawEnterprises) {
+        setEnterprises(JSON.parse(rawEnterprises));
+      }
+      const rawOrgs = window.sessionStorage.getItem(MAIL_DETAILS_ORGS_KEY);
+      if (rawOrgs) {
+        setOrganizations(JSON.parse(rawOrgs));
+      }
+      const rawDocs = window.sessionStorage.getItem(MAIL_DETAILS_DOCUMENTS_KEY);
+      if (rawDocs) {
+        setUploadedFiles(JSON.parse(rawDocs));
+      }
+    } catch (storageError) {
+      console.warn('Failed to hydrate mail data from detail page storage', storageError);
+    }
+  }, [isLoadingData]);
+
+  // Handler functions
+  const generateMailGroupId = () => {
+    const existingIds = new Set(mailGroups.map(group => group.id));
+    let counter = mailGroups.length + 1;
+    let candidate = `MAIL-${String(counter).padStart(3, '0')}`;
+    while (existingIds.has(candidate)) {
+      counter += 1;
+      candidate = `MAIL-${String(counter).padStart(3, '0')}`;
+    }
+    return candidate;
+  };
+
+  const generateTaskId = () => {
+    const existingTasks = new Set(mailGroups.map(group => group.taskId));
+    let counter = mailGroups.length + 1;
+    let candidate = `TASK-${String(counter).padStart(3, '0')}`;
+    while (existingTasks.has(candidate)) {
+      counter += 1;
+      candidate = `TASK-${String(counter).padStart(3, '0')}`;
+    }
+    return candidate;
+  };
+
+  const mutateMailGroup = (groupId: string, updater: (group: MailGroupRecord) => MailGroupRecord) => {
+    setMailGroups(prev =>
+      prev.map(group => {
+        if (group.id !== groupId) return group;
+        return updater({ ...group });
+      })
+    );
+    setEditingMailGroup(current => {
+      if (!current || current.id !== groupId) {
+        return current;
+      }
+      return updater({ ...current });
+    });
+  };
+
+  const buildDocumentFromFile = (file: File, index: number) => ({
+    id: `${file.name}-${Date.now()}-${index}`,
+    name: file.name,
+    pages: Math.floor(Math.random() * 200) + 50,
+    size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+  });
+
+  const handleGroupFileUpload = (groupId, files?: FileList | File[]) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+    const fileArray = Array.from(files instanceof FileList ? files : files);
+    const newDocs = fileArray.map((file, index) => buildDocumentFromFile(file, index));
+    mutateMailGroup(groupId, (group) => ({
+      ...group,
+      documents: [...(group.documents || []), ...newDocs]
     }));
+    setUploadedFiles(prev => {
+      const existingNames = new Set(prev.map(file => file.name));
+      const additions = newDocs.filter(doc => !existingNames.has(doc.name));
+      if (!additions.length) {
+        return prev;
+      }
+      return [...prev, ...additions];
+    });
+  };
 
-    setRecipients([...recipients, ...newRecipients]);
-    setShowImportCSV(false);
-    alert('Successfully imported 3 recipients from CSV!');
+  const handleRemoveGroupDocument = (groupId, documentId) => {
+    mutateMailGroup(groupId, (group) => ({
+      ...group,
+      documents: (group.documents || []).filter(doc => doc.id !== documentId)
+    }));
+  };
+
+  const handleOrganizationUpdate = (
+    organizationId: string,
+    updater: (organization: OrganizationRecord) => OrganizationRecord
+  ) => {
+    setOrganizations(prev =>
+      prev.map(org => {
+        if (org.id !== organizationId) return org;
+        const cloned = {
+          ...org,
+          addresses: org.addresses.map(address => ({ ...address }))
+        };
+        return updater(cloned);
+      })
+    );
+  };
+
+  const handleNavigateToMailDetails = (groupId: string) => {
+    const targetGroup = mailGroups.find(group => group.id === groupId);
+    if (!targetGroup) {
+      return;
+    }
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(
+          MAIL_DETAILS_STORAGE_KEY,
+          JSON.stringify(targetGroup)
+        );
+        window.sessionStorage.setItem(
+          MAIL_DETAILS_ENTERPRISES_KEY,
+          JSON.stringify(enterprises)
+        );
+        window.sessionStorage.setItem(
+          MAIL_DETAILS_ORGS_KEY,
+          JSON.stringify(organizations)
+        );
+        window.sessionStorage.setItem(
+          MAIL_DETAILS_DOCUMENTS_KEY,
+          JSON.stringify(uploadedFiles)
+        );
+      }
+    } catch (error) {
+      console.warn('Failed to persist mail group for detail view', error);
+    }
+    router.push(`/mail/${groupId}`);
+  };
+
+  const handleSwapParticipants = (groupId: string) => {
+    mutateMailGroup(groupId, (group) => {
+      const currentSender = group.sender
+        ? {
+            ...group.sender,
+            address: group.sender.address ? { ...group.sender.address } : null
+          }
+        : null;
+      const currentRecipient = group.recipient
+        ? {
+            ...group.recipient,
+            address: group.recipient.address ? { ...group.recipient.address } : null
+          }
+        : null;
+      const nextSender = currentRecipient
+        ? {
+            ...currentRecipient,
+            contactName: currentRecipient.contactName || currentRecipient.organizationName
+          }
+        : currentSender;
+      const nextRecipient = currentSender
+        ? {
+            ...currentSender,
+            contactName: currentSender.contactName || currentSender.organizationName
+          }
+        : currentRecipient;
+      return {
+        ...group,
+        sender: nextSender,
+        recipient: nextRecipient,
+        senderEnterpriseId: nextSender?.enterpriseId || group.senderEnterpriseId || null,
+        senderContact: nextSender?.contactName || '',
+        senderEmail: nextSender?.email || '',
+        senderPhone: nextSender?.phone || '',
+        senderAddress: nextSender?.address ? formatStructuredAddress(nextSender.address) : '',
+        recipientName: nextRecipient?.contactName || nextRecipient?.organizationName || group.recipientName || '',
+        address: nextRecipient?.address ? formatStructuredAddress(nextRecipient.address) : '',
+        email: nextRecipient?.email || group.email || '',
+        phone: nextRecipient?.phone || group.phone || ''
+      };
+    });
+  };
+
+  const handleCreateMailGroup = () => {
+    const newGroupId = generateMailGroupId();
+    const defaultEnterpriseId = jobData.senderEnterprises[0] || enterprises[0]?.id || null;
+    const defaultEnterprise = enterprises.find(ent => ent.id === defaultEnterpriseId);
+    const defaultSenderOrgId =
+      defaultEnterprise?.senderOrganizations?.[0] ||
+      organizations[0]?.id ||
+      null;
+    const defaultRecipientOrgId =
+      defaultEnterprise?.recipientOrganizations?.[0] ||
+      defaultSenderOrgId ||
+      organizations[0]?.id ||
+      null;
+    const senderOrg = defaultSenderOrgId
+      ? organizations.find(org => org.id === defaultSenderOrgId) || null
+      : null;
+    const recipientOrg = defaultRecipientOrgId
+      ? organizations.find(org => org.id === defaultRecipientOrgId) || null
+      : null;
+    const senderAddress = senderOrg?.addresses.find(addr => addr.default) || senderOrg?.addresses[0] || null;
+    const recipientAddress = recipientOrg?.addresses.find(addr => addr.default) || recipientOrg?.addresses[0] || null;
+    const draftGroup: MailGroupRecord = {
+      id: newGroupId,
+      taskId: generateTaskId(),
+      name: '',
+      recipientName: '',
+      address: recipientAddress ? formatStructuredAddress(recipientAddress) : '',
+      email: '',
+      phone: '',
+      senderEnterpriseId: defaultEnterpriseId,
+      senderContact: defaultEnterprise?.contact || '',
+      senderEmail: defaultEnterprise?.email || '',
+      senderPhone: defaultEnterprise?.phone || '',
+      senderAddress: senderAddress ? formatStructuredAddress(senderAddress) : '',
+      documents: [],
+      deliveryType: 'Certified Mail',
+      status: 'pending',
+      trackingNumber: null,
+      deliveredDate: null,
+      sender: {
+        enterpriseId: defaultEnterpriseId,
+        organizationId: senderOrg?.id || null,
+        organizationName: senderOrg?.name || defaultEnterprise?.name,
+        contactName: defaultEnterprise?.contact || '',
+        email: defaultEnterprise?.email || '',
+        phone: defaultEnterprise?.phone || '',
+        addressId: senderAddress?.id || null,
+        address: senderAddress ? normalizeStructuredAddress(senderAddress) : null
+      },
+      recipient: {
+        enterpriseId: defaultEnterpriseId,
+        organizationId: recipientOrg?.id || null,
+        organizationName: recipientOrg?.name || '',
+        contactName: recipientOrg?.name || '',
+        email: '',
+        phone: '',
+        addressId: recipientAddress?.id || null,
+        address: recipientAddress ? normalizeStructuredAddress(recipientAddress) : null
+      }
+    };
+    setEditingMailGroup(draftGroup);
+    setIsCreatingMailGroup(true);
+    setIsMailDrawerOpen(true);
+  };
+
+  const handleEditMailGroup = (group: MailGroupRecord) => {
+    setEditingMailGroup({
+      ...group,
+      sender: group.sender
+        ? {
+            ...group.sender,
+            address: group.sender.address ? { ...group.sender.address } : null
+          }
+        : group.sender,
+      recipient: group.recipient
+        ? {
+            ...group.recipient,
+            address: group.recipient.address ? { ...group.recipient.address } : null
+          }
+        : group.recipient,
+      documents: [...(group.documents || [])]
+    });
+    setIsCreatingMailGroup(false);
+    setIsMailDrawerOpen(true);
+  };
+
+  const handleSaveMailGroup = (groupData: MailGroupRecord) => {
+    const normalized: MailGroupRecord = {
+      ...groupData,
+      name:
+        groupData.name ||
+        groupData.recipientName ||
+        groupData.recipient?.organizationName ||
+        '',
+      senderAddress: groupData.sender?.address
+        ? formatStructuredAddress(groupData.sender.address)
+        : groupData.senderAddress,
+      address: groupData.recipient?.address
+        ? formatStructuredAddress(groupData.recipient.address)
+        : groupData.address,
+      senderEnterpriseId: groupData.sender?.enterpriseId || groupData.senderEnterpriseId || null,
+      senderContact: groupData.sender?.contactName || groupData.senderContact || '',
+      senderEmail: groupData.sender?.email || groupData.senderEmail || '',
+      senderPhone: groupData.sender?.phone || groupData.senderPhone || '',
+      recipientName: groupData.recipient?.contactName || groupData.recipientName || '',
+      email: groupData.recipient?.email || groupData.email || '',
+      phone: groupData.recipient?.phone || groupData.phone || ''
+    };
+
+    if (isCreatingMailGroup) {
+      setMailGroups(prev => [...prev, normalized]);
+    } else {
+      setMailGroups(prev => prev.map(group => group.id === normalized.id ? normalized : group));
+    }
+
+    setIsMailDrawerOpen(false);
+    setEditingMailGroup(null);
+    setIsCreatingMailGroup(false);
+  };
+
+  const handleDeleteMailGroup = (groupId) => {
+    if (!window.confirm('Are you sure you want to remove this mail group?')) {
+      return;
+    }
+    setMailGroups(mailGroups.filter(group => group.id !== groupId));
+    if (editingMailGroup?.id === groupId) {
+      handleCloseMailDrawer();
+    }
+  };
+
+  const handleCloseMailDrawer = () => {
+    setIsMailDrawerOpen(false);
+    setEditingMailGroup(null);
+    setIsCreatingMailGroup(false);
   };
 
   const handleValidateAddresses = () => {
-    if (!recipients.length) {
-      alert('Please add recipients before running address validation.');
+    if (!mailGroups.length) {
+      alert('Please add mail groups before running address validation.');
       return;
     }
 
     setIsValidating(true);
     setValidationProgress(0);
+    const snapshot = mailGroups.map(group => ({ ...group }));
 
     const interval = setInterval(() => {
       setValidationProgress(prev => {
@@ -276,7 +1728,16 @@ const OutboundMailSystem = () => {
           clearInterval(interval);
           setIsValidating(false);
 
-          const exceptions = recipients
+          const nextGroups = snapshot.map((group, index) => {
+            const isException = index % 3 === 0;
+            return {
+              ...group,
+              status: isException ? 'exception' : 'valid',
+              exceptionReason: isException ? 'Validation exception' : undefined
+            };
+          });
+
+          const exceptions = nextGroups
             .filter((r, index) => index % 3 === 0)
             .map(r => ({
               ...r,
@@ -284,6 +1745,12 @@ const OutboundMailSystem = () => {
               suggestedFix: r.address.includes('Suite') ? r.address : `${r.address}, Suite 100`
             }));
 
+          setMailGroups(nextGroups);
+          setEditingMailGroup(current => {
+            if (!current) return current;
+            const latest = nextGroups.find(group => group.id === current.id);
+            return latest || current;
+          });
           setAddressExceptions(exceptions);
           return 100;
         }
@@ -292,12 +1759,24 @@ const OutboundMailSystem = () => {
     }, 150);
   };
 
-  const handleFixAddress = (recipientId, newAddress) => {
-    setRecipients(recipients.map(r => 
-      r.id === recipientId 
-        ? { ...r, address: newAddress, status: 'valid', exceptionReason: undefined } 
-        : r
-    ));
+  const handleFixAddress = (recipientId: string, newAddress: string | StructuredAddress) => {
+    const structured = typeof newAddress === 'string' ? null : normalizeStructuredAddress(newAddress);
+    const formatted = typeof newAddress === 'string'
+      ? newAddress
+      : formatStructuredAddress(structured);
+    mutateMailGroup(recipientId, (group) => ({
+      ...group,
+      address: formatted,
+      status: 'valid',
+      exceptionReason: undefined,
+      recipient: group.recipient
+        ? {
+            ...group.recipient,
+            address: structured || group.recipient.address,
+            addressId: structured?.id || group.recipient.addressId
+          }
+        : group.recipient
+    }));
     setAddressExceptions(addressExceptions.filter(e => e.id !== recipientId));
     setShowFixAddress(false);
     setAddressToFix(null);
@@ -305,9 +1784,11 @@ const OutboundMailSystem = () => {
   };
 
   const handleSkipException = (recipientId) => {
-    setRecipients(recipients.map(r => 
-      r.id === recipientId ? { ...r, status: 'manual-review', exceptionReason: 'Marked for manual review' } : r
-    ));
+    mutateMailGroup(recipientId, (group) => ({
+      ...group,
+      status: 'manual-review',
+      exceptionReason: 'Marked for manual review'
+    }));
     setAddressExceptions(addressExceptions.filter(e => e.id !== recipientId));
   };
 
@@ -396,16 +1877,18 @@ const OutboundMailSystem = () => {
     if (type === 'jurisdiction') {
       const grouped = sampleJobs.reduce((acc, job) => {
         const key = job.jurisdiction || 'Unknown';
-        if (!acc[key]) {
-          acc[key] = { items: 0, delivered: 0, exceptions: 0 };
-        }
-        acc[key].items += job.items || 0;
-        acc[key].delivered += job.delivered || 0;
-        acc[key].exceptions += job.exceptions || 0;
+        const bucket = acc[key] || { items: 0, delivered: 0, exceptions: 0 };
+        bucket.items += job.items || 0;
+        bucket.delivered += job.delivered || 0;
+        bucket.exceptions += job.exceptions || 0;
+        acc[key] = bucket;
         return acc;
-      }, {});
+      }, {} as Record<string, { items: number; delivered: number; exceptions: number }>);
 
-      const rows = Object.entries(grouped).map(([code, stats]) => ({
+      const rows = (Object.entries(grouped) as Array<[
+        string,
+        { items: number; delivered: number; exceptions: number }
+      ]>).map(([code, stats]) => ({
         jurisdiction: code,
         items: formatNumber(stats.items),
         delivered: formatNumber(stats.delivered),
@@ -426,21 +1909,21 @@ const OutboundMailSystem = () => {
     }
 
     if (type === 'exception') {
-      const exceptionRecipients = recipients.filter(r => r.status === 'exception' || r.status === 'manual-review');
-      return {
-        type,
-        title: 'Exception Analysis',
-        metrics: [
-          { label: 'Open Exceptions', value: formatNumber(addressExceptions.length) },
-          { label: 'Recipients Requiring Review', value: formatNumber(exceptionRecipients.length) },
-          { label: 'Jobs With Exceptions', value: formatNumber(sampleJobs.filter(job => job.exceptions > 0).length) }
-        ],
-        rows: exceptionRecipients.map(recipient => ({
-          recipient: recipient.name,
-          address: recipient.address,
-          status: recipient.status,
-          documents: (recipient.documents || []).join(', ') || 'N/A'
-        }))
+          const exceptionRecipients = recipients.filter(r => r.status === 'exception' || r.status === 'manual-review');
+          return {
+            type,
+            title: 'Exception Analysis',
+            metrics: [
+              { label: 'Open Exceptions', value: formatNumber(addressExceptions.length) },
+              { label: 'Mail Groups Requiring Review', value: formatNumber(exceptionRecipients.length) },
+              { label: 'Jobs With Exceptions', value: formatNumber(sampleJobs.filter(job => job.exceptions > 0).length) }
+            ],
+            rows: exceptionRecipients.map(recipient => ({
+              recipient: recipient.name,
+              address: recipient.address,
+              status: recipient.status,
+              documents: (recipient.documents || []).map((doc) => typeof doc === 'string' ? doc : doc.name).join(', ') || 'N/A'
+            }))
       };
     }
 
@@ -505,7 +1988,7 @@ const OutboundMailSystem = () => {
           recipientName: recipient.name,
           name: org.name,
           organizationId: org.id,
-          address: defaultAddr?.address || '',
+          address: defaultAddr ? formatStructuredAddress(defaultAddr) : '',
           email: recipient.email
         });
         setSelectedAddress(defaultAddr);
@@ -524,7 +2007,7 @@ const OutboundMailSystem = () => {
           ...formData,
           name: org.name,
           organizationId: orgId,
-          address: defaultAddr?.address || ''
+          address: defaultAddr ? formatStructuredAddress(defaultAddr) : ''
         });
         setSelectedAddress(defaultAddr);
       }
@@ -534,7 +2017,7 @@ const OutboundMailSystem = () => {
       setSelectedAddress(address);
       setFormData({
         ...formData,
-        address: address.address
+        address: address ? formatStructuredAddress(address) : formData.address
       });
     };
     
@@ -652,7 +2135,7 @@ const OutboundMailSystem = () => {
                     <option value="">Select Address</option>
                     {selectedOrg.addresses.map(addr => (
                       <option key={addr.id} value={addr.id}>
-                        {addr.label} - {addr.address}
+                        {addr.label ? `${addr.label} - ` : ''}{formatStructuredAddress(addr)}
                       </option>
                     ))}
                   </select>
@@ -978,7 +2461,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           ...quickMailData,
           recipientName: recipient.name,
           organizationId: org.id,
-          address: defaultAddr?.address || '',
+          address: defaultAddr ? formatStructuredAddress(defaultAddr) : '',
           email: recipient.email
         });
       }
@@ -986,16 +2469,19 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
       setShowRecipientDropdown(false);
     };
     
-    const handleFileUpload = (e) => {
-      const file = e.target.files[0];
+    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
       if (file) {
-        setUploadedDoc({
+        const docPayload = {
+          id: `QUICK-${Date.now()}`,
           name: file.name,
+          pages: Math.floor(Math.random() * 120) + 20,
           size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-        });
+        };
+        setUploadedDoc(docPayload);
         setQuickMailData({
           ...quickMailData,
-          documents: [file.name]
+          documents: [docPayload]
         });
       }
     };
@@ -1059,7 +2545,9 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     <FileText className="w-5 h-5 text-gray-400 mr-3" />
                     <div>
                       <p className="text-sm font-medium text-gray-900">{uploadedDoc.name}</p>
-                      <p className="text-xs text-gray-500">{uploadedDoc.size}</p>
+                      <p className="text-xs text-gray-500">
+                        {uploadedDoc.pages} pages • {uploadedDoc.size}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -1136,14 +2624,14 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     onChange={(e) => {
                       const addr = selectedOrg.addresses.find(a => a.id === e.target.value);
                       if (addr) {
-                        setQuickMailData({...quickMailData, address: addr.address});
+                        setQuickMailData({...quickMailData, address: formatStructuredAddress(addr)});
                       }
                     }}
                   >
                     <option value="">Choose address...</option>
                     {selectedOrg.addresses.map(addr => (
                       <option key={addr.id} value={addr.id}>
-                        {addr.label} - {addr.address}
+                        {addr.label ? `${addr.label} - ` : ''}{formatStructuredAddress(addr)}
                       </option>
                     ))}
                   </select>
@@ -1235,7 +2723,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
               <textarea
                 value={quickMailData.notes}
                 onChange={(e) => setQuickMailData({...quickMailData, notes: e.target.value})}
-                rows="2"
+                rows={2}
                 placeholder="Any special instructions..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -1777,12 +3265,11 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
   const MailJobWizard = () => {
     const steps = [
       { number: 1, name: 'Job Details', icon: FileText },
-      { number: 2, name: 'Upload Documents', icon: Upload },
-      { number: 3, name: 'Map Recipients', icon: Users },
-      { number: 4, name: 'Validate', icon: CheckCircle },
-      { number: 5, name: 'Preview', icon: Eye },
-      { number: 6, name: 'Approve', icon: Check },
-      { number: 7, name: 'Dispatch', icon: Send }
+      { number: 2, name: 'Mail Groups', icon: Package },
+      { number: 3, name: 'Validate', icon: CheckCircle },
+      { number: 4, name: 'Preview', icon: Eye },
+      { number: 5, name: 'Approve', icon: Check },
+      { number: 6, name: 'Dispatch', icon: Send }
     ];
 
     return (
@@ -1901,7 +3388,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Sender Enterprises *
                 </label>
-                <div className="relative">
+                <div className="relative" ref={enterpriseDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setEnterpriseDropdownOpen(!enterpriseDropdownOpen)}
@@ -1959,7 +3446,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 </label>
                 <textarea
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows="3"
+                  rows={3}
                   placeholder="Add any special instructions or notes..."
                   value={jobData.notes}
                   onChange={(e) => setJobData({...jobData, notes: e.target.value})}
@@ -1970,62 +3457,58 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
 
           {wizardStep === 2 && (
             <div className="space-y-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Documents</h2>
-              
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">Drag and drop PDF files here, or click to browse</p>
-                <input
-                  type="file"
-                  id="fileUpload"
-                  multiple
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-                <label
-                  htmlFor="fileUpload"
-                  className="inline-block bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 cursor-pointer"
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Mail Groups</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Combine sender enterprises, recipients, and documents into flexible mail tasks.
+                  </p>
+                </div>
+                <button
+                  onClick={handleCreateMailGroup}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
                 >
-                  Select Files
-                </label>
-                <p className="text-xs text-gray-500 mt-2">Supports: PDF files up to 100MB each</p>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Mail
+                </button>
               </div>
-              
-              {uploadedFiles.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium text-gray-700">Uploaded Files ({uploadedFiles.length})</h3>
-                  <div className="space-y-2">
-                    {uploadedFiles.map((file) => (
-                      <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                        <div className="flex items-center">
-                          <FileText className="w-5 h-5 text-gray-400 mr-3" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                            <p className="text-xs text-gray-500">{file.pages} pages, {file.size}</p>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => handleDeleteFile(file.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+
+              {mailGroups.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center">
+                  <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-700 font-medium mb-2">No mail groups configured yet</p>
+                  <p className="text-sm text-gray-500 mb-6">
+                    Create your first mail group to map a sender, recipient, and the supporting documents.
+                  </p>
+                  <div className="flex justify-center gap-3">
+                    <button
+                      onClick={handleCreateMailGroup}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Mail Group
+                    </button>
                   </div>
                 </div>
-              )}
-              
-              {uploadedFiles.length === 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex items-start">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-900">No files uploaded</p>
-                      <p className="text-sm text-yellow-700 mt-1">Please upload at least one PDF document to continue</p>
-                    </div>
-                  </div>
+              ) : (
+                <div className="grid gap-5 md:grid-cols-2">
+                  {mailGroups.map((group) => (
+                    <MailGroupCard
+                      key={group.id}
+                      group={group}
+                      enterprises={enterprises}
+                      organizations={organizations}
+                      onEdit={() => handleEditMailGroup(group)}
+                      onDelete={() => handleDeleteMailGroup(group.id)}
+                      onFileUpload={(files) => handleGroupFileUpload(group.id, files)}
+                      onDeliveryChange={(value) => mutateMailGroup(group.id, current => ({
+                        ...current,
+                        deliveryType: value
+                      }))}
+                      onOpenDetails={() => handleNavigateToMailDetails(group.id)}
+                      onSwapParticipants={() => handleSwapParticipants(group.id)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -2033,207 +3516,25 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
 
           {wizardStep === 3 && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Map Recipients</h2>
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => setShowImportCSV(true)}
-                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Import CSV
-                  </button>
-                  <button 
-                    onClick={() => setShowAddRecipient(true)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Recipient
-                  </button>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Validate Mail</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Review each mail group, confirm delivery preferences, and resolve any address exceptions before dispatch.
+                  </p>
                 </div>
+                {!isValidating && (
+                  <button
+                    onClick={handleValidateAddresses}
+                    disabled={!mailGroups.length}
+                    className={`px-4 py-2 rounded-md flex items-center ${mailGroups.length ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {validationProgress === 0 ? 'Start Validation' : 'Re-run Validation'}
+                  </button>
+                )}
               </div>
-              
-              {recipients.length === 0 ? (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">No recipients added yet</p>
-                  <p className="text-sm text-gray-500 mb-4">Add recipients manually or import from a CSV file</p>
-                  <div className="flex justify-center space-x-3">
-                    <button 
-                      onClick={() => setShowAddRecipient(true)}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-                    >
-                      Add First Recipient
-                    </button>
-                    <button 
-                      onClick={() => setShowImportCSV(true)}
-                      className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-                    >
-                      Import from CSV
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recipient Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Delivery Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Validation</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {recipients.map((recipient) => (
-                        <tr key={recipient.id}>
-                          <td className="px-4 py-3 text-sm text-gray-900">{recipient.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            <div>
-                              <p>{recipient.address}</p>
-                              {recipient.email && (
-                                <p className="text-xs text-gray-400 mt-1">{recipient.email}</p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {recipient.documents && recipient.documents.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {recipient.documents.map((doc, idx) => (
-                                  <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
-                                    <FileText className="w-3 h-3 mr-1" />
-                                    {doc.substring(0, 20)}...
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">No documents</span>
-                            )}
-                            <button
-                              onClick={() => setEditingRecipient(recipient)}
-                              className="text-xs text-blue-600 hover:text-blue-800 mt-1 block"
-                            >
-                              Edit Documents
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            <select 
-                              className="text-xs border border-gray-300 rounded px-2 py-1"
-                              value={recipient.deliveryType}
-                              onChange={(e) => {
-                                const updated = {...recipient, deliveryType: e.target.value};
-                                handleEditRecipient(updated);
-                              }}
-                            >
-                              <option>Certified Mail</option>
-                              <option>First Class</option>
-                              <option>Priority</option>
-                              <option>Express</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            {recipient.status === 'exception' ? (
-                              <span className="inline-flex items-center text-red-600">
-                                <AlertCircle className="w-4 h-4 mr-1" />
-                                <span className="text-xs">Invalid</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center text-green-600">
-                                <CheckCircle className="w-4 h-4 mr-1" />
-                                <span className="text-xs">Valid</span>
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <button 
-                              onClick={() => setEditingRecipient(recipient)}
-                              className="text-blue-600 hover:text-blue-800 mr-2"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteRecipient(recipient.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              
-              {recipients.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-blue-900">Total Recipients: {recipients.length}</p>
-                      <p className="text-xs text-blue-700 mt-1">
-                        Ready for validation: {recipients.filter(r => r.status !== 'exception').length} | 
-                        Exceptions: {recipients.filter(r => r.status === 'exception').length}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        // Simulate validation
-                        const validatedRecipients = recipients.map(r => ({
-                          ...r,
-                          status: Math.random() > 0.9 ? 'exception' : 'valid'
-                        }));
-                        setRecipients(validatedRecipients);
-                      }}
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                    >
-                      Validate All
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {/* Modals */}
-              {showAddRecipient && (
-                <RecipientModal 
-                  recipient={null}
-                  onSave={handleAddRecipient}
-                  onClose={() => setShowAddRecipient(false)}
-                />
-              )}
-              
-              {editingRecipient && (
-                <RecipientModal 
-                  recipient={editingRecipient}
-                  onSave={handleEditRecipient}
-                  onClose={() => setEditingRecipient(null)}
-                />
-              )}
-              
-              {showImportCSV && (
-                <CSVImportModal 
-                  onImport={handleImportCSV}
-                  onClose={() => setShowImportCSV(false)}
-                />
-              )}
-            </div>
-          )}
 
-          {wizardStep === 4 && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Validate Addresses</h2>
-              
-              {!isValidating && validationProgress === 0 && (
-                <button
-                  onClick={handleValidateAddresses}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center"
-                >
-                  <RefreshCw className="w-5 h-5 mr-2" />
-                  Start Address Validation
-                </button>
-              )}
-              
               {isValidating && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <div className="flex items-start">
@@ -2241,25 +3542,25 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     <div className="flex-1">
                       <p className="text-sm font-medium text-blue-900">Validating Addresses...</p>
                       <p className="text-sm text-blue-700 mt-1">
-                        Checking {recipients.length} addresses with USPS Address Validation API
+                        Checking {mailGroups.length} mail group addresses with USPS Address Validation API
                       </p>
                       <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                          style={{width: `${validationProgress}%`}}
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${validationProgress}%` }}
                         />
                       </div>
                     </div>
                   </div>
                 </div>
               )}
-              
+
               {validationProgress === 100 && (
                 <>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-green-900 font-medium">Valid</span>
+                        <span className="text-green-900 font-medium">Valid Mail</span>
                         <CheckCircle className="w-5 h-5 text-green-600" />
                       </div>
                       <p className="text-2xl font-bold text-green-900">
@@ -2267,7 +3568,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       </p>
                       <p className="text-sm text-green-700">Ready to send</p>
                     </div>
-                    
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-yellow-900 font-medium">Corrected</span>
@@ -2276,7 +3576,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       <p className="text-2xl font-bold text-yellow-900">{recipientStats.correctedCount}</p>
                       <p className="text-sm text-yellow-700">Auto-corrected</p>
                     </div>
-                    
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-red-900 font-medium">Exceptions</span>
@@ -2286,8 +3585,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       <p className="text-sm text-red-700">Need review</p>
                     </div>
                   </div>
-                  
-                  {addressExceptions.length > 0 && (
+
+                  {addressExceptions.length > 0 ? (
                     <div>
                       <h3 className="text-sm font-medium text-gray-700 mb-3">Address Exceptions</h3>
                       <div className="space-y-2">
@@ -2303,7 +3602,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                                 </p>
                               </div>
                               <div className="flex space-x-2">
-                                <button 
+                                <button
                                   onClick={() => {
                                     setAddressToFix(exception);
                                     setShowFixAddress(true);
@@ -2312,7 +3611,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                                 >
                                   Fix Address
                                 </button>
-                                <button 
+                                <button
                                   onClick={() => handleSkipException(exception.id)}
                                   className="text-gray-600 hover:text-gray-800 text-sm"
                                 >
@@ -2324,9 +3623,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                         ))}
                       </div>
                     </div>
-                  )}
-                  
-                  {addressExceptions.length === 0 && (
+                  ) : (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                       <div className="flex items-center">
                         <CheckCircle className="w-5 h-5 text-green-600 mr-3" />
@@ -2339,7 +3636,150 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   )}
                 </>
               )}
-              
+
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Mail Validation Grid</h3>
+                    <p className="text-xs text-gray-500 mt-1">Showing {mailGroups.length} mail group(s)</p>
+                  </div>
+                  <div className="flex items-center text-xs text-gray-500">
+                    <span className="inline-flex items-center mr-3">
+                      <span className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+                      Valid
+                    </span>
+                    <span className="inline-flex items-center mr-3">
+                      <span className="w-2 h-2 rounded-full bg-yellow-500 mr-2" />
+                      Corrected
+                    </span>
+                    <span className="inline-flex items-center">
+                      <span className="w-2 h-2 rounded-full bg-red-500 mr-2" />
+                      Exception
+                    </span>
+                  </div>
+                </div>
+                {mailGroups.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-gray-500">
+                    No mail groups configured. Create mail groups in the previous step to begin validation.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sender</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documents</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Delivery Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {mailGroups.map((group) => {
+                          const sender = enterprises.find(ent => ent.id === group.senderEnterpriseId);
+                          const docs = group.documents || [];
+                          const previewDocs = docs.slice(0, 2);
+                          const remainingDocs = docs.length - previewDocs.length;
+                          return (
+                            <tr key={group.id} className="align-top">
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">{group.taskId || group.id}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                <p className="text-gray-900 font-medium">{sender ? sender.name : 'Not selected'}</p>
+                                <p className="text-xs text-gray-500 mt-1">{group.senderAddress || sender?.email || '—'}</p>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                <p className="text-gray-900 font-medium">{group.recipientName || group.name || 'Recipient not set'}</p>
+                                <p className="text-xs text-gray-500 mt-1">{group.address || 'No address provided'}</p>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                <span className="text-gray-900 font-medium">{docs.length || 0}</span> file(s)
+                                {previewDocs.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {previewDocs.map((doc) => (
+                                      <span key={doc.id} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                                        <FileText className="w-3 h-3 mr-1" />
+                                        {doc.name.length > 20 ? `${doc.name.slice(0, 17)}...` : doc.name}
+                                      </span>
+                                    ))}
+                                    {remainingDocs > 0 && (
+                                      <span className="text-xs text-gray-500">+{remainingDocs} more</span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <select
+                                  className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  value={group.deliveryType || 'Certified Mail'}
+                                  onChange={(event) => mutateMailGroup(group.id, (current) => ({
+                                    ...current,
+                                    deliveryType: event.target.value
+                                  }))}
+                                >
+                                  <option>Certified Mail</option>
+                                  <option>First Class</option>
+                                  <option>Priority</option>
+                                  <option>Express</option>
+                                </select>
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${MAIL_STATUS_STYLES[group.status] || 'bg-gray-100 text-gray-600'}`}>
+                                    {(group.status || 'pending').replace('-', ' ')}
+                                  </span>
+                                  {group.status === 'exception' && (
+                                    <button
+                                      onClick={() => {
+                                        setAddressToFix(group);
+                                        setShowFixAddress(true);
+                                      }}
+                                      className="text-xs text-blue-600 hover:text-blue-800"
+                                    >
+                                      Resolve
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <button
+                                  onClick={() => handleEditMailGroup(group)}
+                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                  Mail Details
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {mailGroups.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Mail groups ready for dispatch: {mailGroups.filter(group => group.status === 'valid').length}</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Exceptions pending: {mailGroups.filter(group => group.status === 'exception' || group.status === 'manual-review').length}
+                    </p>
+                  </div>
+                  {!isValidating && (
+                    <button
+                      onClick={handleValidateAddresses}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 flex items-center"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Validate Again
+                    </button>
+                  )}
+                </div>
+              )}
+
               {showFixAddress && addressToFix && (
                 <FixAddressModal 
                   recipient={addressToFix}
@@ -2353,7 +3793,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             </div>
           )}
 
-          {wizardStep === 5 && (
+          {wizardStep === 4 && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Preview & Personalization</h2>
               
@@ -2430,7 +3870,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             </div>
           )}
 
-          {wizardStep === 6 && (
+          {wizardStep === 5 && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Approval</h2>
               
@@ -2490,7 +3930,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   </label>
                   <textarea
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows="3"
+                    rows={3}
                     placeholder="Add any notes for the approver..."
                   />
                 </div>
@@ -2507,7 +3947,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             </div>
           )}
 
-          {wizardStep === 7 && (
+          {wizardStep === 6 && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Dispatch</h2>
               
@@ -2596,6 +4036,22 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           )}
         </div>
 
+        {isMailDrawerOpen && editingMailGroup && (
+          <MailDetailsDrawer
+            open={isMailDrawerOpen}
+            group={editingMailGroup}
+            enterprises={enterprises}
+            organizations={organizations}
+            onClose={handleCloseMailDrawer}
+            onSave={handleSaveMailGroup}
+            onChange={setEditingMailGroup}
+            onUpload={(files) => handleGroupFileUpload(editingMailGroup.id, files)}
+            onRemoveDocument={(docId) => handleRemoveGroupDocument(editingMailGroup.id, docId)}
+            onUpdateOrganization={handleOrganizationUpdate}
+            onSwapParticipants={() => handleSwapParticipants(editingMailGroup.id)}
+          />
+        )}
+
         {/* Navigation Buttons */}
         <div className="flex justify-between mt-6">
           <button 
@@ -2611,25 +4067,37 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 alert('Please select at least one sender enterprise before continuing.');
                 return;
               }
-              if (wizardStep === 2 && uploadedFiles.length === 0) {
-                alert('Please upload at least one document before proceeding');
+              if (wizardStep === 2) {
+                if (mailGroups.length === 0) {
+                  alert('Please add at least one mail group before proceeding.');
+                  return;
+                }
+                const missingDocuments = mailGroups.filter(group => !group.documents || group.documents.length === 0);
+                if (missingDocuments.length) {
+                  alert('Each mail group needs at least one document before you continue.');
+                  return;
+                }
+                const missingRecipientAddress = mailGroups.filter(group => !group.address);
+                if (missingRecipientAddress.length) {
+                  alert('Please provide a recipient address for every mail group.');
+                  return;
+                }
+              }
+              if (wizardStep === 3 && mailGroups.length === 0) {
+                alert('No mail groups available to validate.');
                 return;
               }
-              if (wizardStep === 3 && recipients.length === 0) {
-                alert('Please add at least one recipient before proceeding');
-                return;
-              }
-              if (wizardStep === 7) {
+              if (wizardStep === steps.length) {
                 alert('Mail job dispatched successfully!');
                 setCurrentView('dashboard');
                 setWizardStep(1);
                 return;
               }
-              setWizardStep(Math.min(7, wizardStep + 1));
+              setWizardStep(Math.min(steps.length, wizardStep + 1));
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {wizardStep === 7 ? 'Complete' : 'Next'}
+            {wizardStep === steps.length ? 'Complete' : 'Next'}
           </button>
         </div>
       </div>
@@ -2813,7 +4281,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     
                     {expandedRow === recipient.id && (
                       <tr>
-                        <td colSpan="6" className="px-6 py-4 bg-gray-50">
+                        <td colSpan={6} className="px-6 py-4 bg-gray-50">
                           <div className="space-y-4">
                             {recipient.status === 'exception' && (
                               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -2974,23 +4442,76 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
         <QuickMailModal 
           onClose={() => setShowQuickMail(false)}
           onSend={(data) => {
-            // Add the quick mail to recipients
-            const newRecipient = {
-              id: `REC-${String(recipients.length + 1).padStart(3, '0')}`,
+            const mailId = generateMailGroupId();
+            const taskId = generateTaskId();
+            const defaultEnterpriseId = jobData.senderEnterprises[0] || enterprises[0]?.id || null;
+            const enterpriseDetails = enterprises.find(ent => ent.id === defaultEnterpriseId);
+            const normalizedDocs = (data.documents || []).map((doc, index) => ({
+              id: doc.id || `${mailId}-DOC-${index}`,
+              name: doc.name,
+              pages: doc.pages || Math.floor(Math.random() * 120) + 30,
+              size: doc.size || 'Unknown'
+            }));
+
+            const selectedOrg = data.organizationId
+              ? organizations.find(org => org.id === data.organizationId) || null
+              : null;
+            const senderParticipant: ParticipantRecord = {
+              enterpriseId: defaultEnterpriseId,
+              organizationId: selectedOrg?.id || null,
+              organizationName: selectedOrg?.name || enterpriseDetails?.name || '',
+              contactName: enterpriseDetails?.contact || '',
+              email: enterpriseDetails?.email || '',
+              phone: enterpriseDetails?.phone || '',
+              addressId: null,
+              address: null
+            };
+            const recipientParticipant: ParticipantRecord = {
+              enterpriseId: defaultEnterpriseId,
+              organizationId: selectedOrg?.id || null,
+              organizationName: selectedOrg?.name || data.recipientName || '',
+              contactName: data.recipientName,
+              email: data.email || '',
+              phone: data.phone || '',
+              addressId: null,
+              address: data.address
+                ? normalizeStructuredAddress({ streetAddress: data.address })
+                : null
+            };
+
+            const quickGroup = {
+              id: mailId,
+              taskId,
               name: data.recipientName,
               recipientName: data.recipientName,
               organizationId: data.organizationId,
               address: data.address,
-              trackingNumber: null,
-              status: 'pending',
-              deliveredDate: null,
-              documents: data.documents,
-              deliveryType: data.deliveryType,
               email: data.email,
-              phone: data.phone
+              phone: data.phone,
+              senderEnterpriseId: defaultEnterpriseId,
+              senderContact: enterpriseDetails?.contact || '',
+              senderEmail: enterpriseDetails?.email || '',
+              senderPhone: enterpriseDetails?.phone || '',
+              senderAddress: '',
+              documents: normalizedDocs,
+              deliveryType: data.deliveryType,
+              status: 'pending',
+              trackingNumber: null,
+              deliveredDate: null,
+              notes: data.notes || '',
+              sender: senderParticipant,
+              recipient: recipientParticipant
             };
-            setRecipients([...recipients, newRecipient]);
-            setShowQuickMail(false);
+
+            setMailGroups(prev => [...prev, quickGroup]);
+            setUploadedFiles(prev => {
+              const existing = new Set(prev.map(file => file.name));
+              const additions = normalizedDocs.filter(doc => !existing.has(doc.name));
+              if (!additions.length) {
+                return prev;
+              }
+              return [...prev, ...additions];
+            });
           }}
         />
       )}
