@@ -31,7 +31,6 @@ import {
   AlertTriangle,
   Truck,
   Mail,
-  Building,
   Phone,
   AtSign,
   Hash,
@@ -1079,7 +1078,6 @@ const OutboundMailSystem = () => {
   const enterpriseDropdownRef = useRef<HTMLDivElement | null>(null);
   const [archiveFilters, setArchiveFilters] = useState({
     query: '',
-    jurisdiction: 'all',
     status: 'all',
     date: ''
   });
@@ -1088,7 +1086,6 @@ const OutboundMailSystem = () => {
 
   const [jobData, setJobData] = useState({
     jobName: '',
-    jurisdiction: '',
     dueDate: '',
     priority: 'standard',
     notes: '',
@@ -1807,14 +1804,13 @@ const OutboundMailSystem = () => {
   const applyArchiveFilters = () => {
     const results = sampleJobs.filter(job => {
       const matchesQuery = archiveFilters.query
-        ? [job.id, job.name, job.jurisdiction]
+        ? [job.id, job.name]
             .filter(Boolean)
             .some(value => value.toString().toLowerCase().includes(archiveFilters.query.toLowerCase()))
         : true;
-      const matchesJurisdiction = archiveFilters.jurisdiction === 'all' || job.jurisdiction === archiveFilters.jurisdiction;
       const matchesStatus = archiveFilters.status === 'all' || job.status === archiveFilters.status;
       const matchesDate = archiveFilters.date ? job.sentDate === archiveFilters.date : true;
-      return matchesQuery && matchesJurisdiction && matchesStatus && matchesDate;
+      return matchesQuery && matchesStatus && matchesDate;
     });
     setArchiveResults(results);
   };
@@ -1832,7 +1828,6 @@ const OutboundMailSystem = () => {
   const clearArchiveFilters = () => {
     const defaults = {
       query: '',
-      jurisdiction: 'all',
       status: 'all',
       date: ''
     };
@@ -1871,40 +1866,6 @@ const OutboundMailSystem = () => {
           items: formatNumber(job.items),
           rate: job.items ? `${Math.round((job.delivered / job.items) * 100)}%` : '0%'
         }))
-      };
-    }
-
-    if (type === 'jurisdiction') {
-      const grouped = sampleJobs.reduce((acc, job) => {
-        const key = job.jurisdiction || 'Unknown';
-        const bucket = acc[key] || { items: 0, delivered: 0, exceptions: 0 };
-        bucket.items += job.items || 0;
-        bucket.delivered += job.delivered || 0;
-        bucket.exceptions += job.exceptions || 0;
-        acc[key] = bucket;
-        return acc;
-      }, {} as Record<string, { items: number; delivered: number; exceptions: number }>);
-
-      const rows = (Object.entries(grouped) as Array<[
-        string,
-        { items: number; delivered: number; exceptions: number }
-      ]>).map(([code, stats]) => ({
-        jurisdiction: code,
-        items: formatNumber(stats.items),
-        delivered: formatNumber(stats.delivered),
-        exceptions: formatNumber(stats.exceptions),
-        rate: stats.items ? `${Math.round((stats.delivered / stats.items) * 100)}%` : '0%'
-      }));
-
-      return {
-        type,
-        title: 'Jurisdiction Summary',
-        metrics: [
-          { label: 'Jurisdictions Covered', value: formatNumber(rows.length) },
-          { label: 'Total Items', value: formatNumber(sampleJobs.reduce((sum, job) => sum + (job.items || 0), 0)) },
-          { label: 'Total Exceptions', value: formatNumber(sampleJobs.reduce((sum, job) => sum + (job.exceptions || 0), 0)) }
-        ],
-        rows
       };
     }
 
@@ -2289,10 +2250,10 @@ const OutboundMailSystem = () => {
     };
     
     const downloadCSVTemplate = () => {
-      const csvContent = `Name,Address,City,State,ZIP,Email,Phone,Jurisdiction Code,Delivery Type
-Example Corp,123 Main St,Los Angeles,CA,90001,contact@example.com,(555) 123-4567,CA,Certified Mail
-Sample LLC,456 Oak Ave,San Francisco,CA,94102,info@samplellc.com,(555) 234-5678,CA,First Class
-Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,CA,Priority`;
+      const csvContent = `Name,Address,City,State,ZIP,Email,Phone,Delivery Type
+Example Corp,123 Main St,Los Angeles,CA,90001,contact@example.com,(555) 123-4567,Certified Mail
+Sample LLC,456 Oak Ave,San Francisco,CA,94102,info@samplellc.com,(555) 234-5678,First Class
+Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,Priority`;
       
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
@@ -2319,7 +2280,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-800">
                 <strong>CSV Format Requirements:</strong> The CSV file should contain columns for:
-                Name, Address, City, State, ZIP, Email, Phone, Jurisdiction Code, Delivery Type
+                Name, Address, City, State, ZIP, Email, Phone, Delivery Type
               </p>
             </div>
           </div>
@@ -2444,7 +2405,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
       phone: '',
       documents: [],
       deliveryType: 'Certified Mail',
-      jurisdiction: '',
       notes: ''
     });
     const [uploadedDoc, setUploadedDoc] = useState(null);
@@ -2681,38 +2641,20 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
             </div>
             
             {/* Delivery Options */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Delivery Type *
-                </label>
-                <select
-                  value={quickMailData.deliveryType}
-                  onChange={(e) => setQuickMailData({...quickMailData, deliveryType: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Certified Mail">Certified Mail</option>
-                  <option value="First Class">First Class</option>
-                  <option value="Priority">Priority</option>
-                  <option value="Express">Express (Next Day)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Jurisdiction
-                </label>
-                <select
-                  value={quickMailData.jurisdiction}
-                  onChange={(e) => setQuickMailData({...quickMailData, jurisdiction: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Jurisdiction</option>
-                  <option value="CA">California</option>
-                  <option value="NY">New York</option>
-                  <option value="TX">Texas</option>
-                  <option value="FL">Florida</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Delivery Type *
+              </label>
+              <select
+                value={quickMailData.deliveryType}
+                onChange={(e) => setQuickMailData({...quickMailData, deliveryType: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Certified Mail">Certified Mail</option>
+                <option value="First Class">First Class</option>
+                <option value="Priority">Priority</option>
+                <option value="Express">Express (Next Day)</option>
+              </select>
             </div>
             
             {/* Notes */}
@@ -2765,7 +2707,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
 
   const ReportModal = ({ data, onClose }) => {
     if (!data) return null;
-    const emptyColSpan = data.type === 'exception' ? 4 : 5;
+    const emptyColSpan = data.type === 'delivery' ? 5 : 4;
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
         <div className="bg-white rounded-lg w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
@@ -2801,15 +2743,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Rate</th>
                     </>
                   )}
-                  {data.type === 'jurisdiction' && (
-                    <>
-                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Jurisdiction</th>
-                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Items</th>
-                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Delivered</th>
-                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Exceptions</th>
-                      <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Delivery Rate</th>
-                    </>
-                  )}
                   {data.type === 'exception' && (
                     <>
                       <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase text-left">Recipient</th>
@@ -2830,15 +2763,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                           <td className="px-4 py-2 text-sm text-gray-700">{row.name}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{row.delivered}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{row.items}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{row.rate}</td>
-                        </>
-                      )}
-                      {data.type === 'jurisdiction' && (
-                        <>
-                          <td className="px-4 py-2 text-sm text-gray-900">{row.jurisdiction}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{row.items}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{row.delivered}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{row.exceptions}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{row.rate}</td>
                         </>
                       )}
@@ -2978,7 +2902,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
               <tr className="bg-gray-50">
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jurisdiction</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
@@ -2993,11 +2916,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {job.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                      {job.jurisdiction}
-                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(job.status)}
@@ -3042,8 +2960,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
   );
 
   const ArchiveView = () => {
-    const jurisdictions = useMemo(() => Array.from(new Set(sampleJobs.map(job => job.jurisdiction))).filter(Boolean), [sampleJobs]);
-
     return (
       <div className="p-6">
         <div className="mb-6">
@@ -3052,7 +2968,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
         </div>
         
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
               <input
@@ -3062,19 +2978,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                 placeholder="Job ID, recipient, tracking..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Jurisdiction</label>
-              <select
-                value={archiveFilters.jurisdiction}
-                onChange={(e) => updateArchiveFilter('jurisdiction', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Jurisdictions</option>
-                {jurisdictions.map(code => (
-                  <option key={code} value={code}>{code}</option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Sent Date</label>
@@ -3137,7 +3040,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     <tr className="bg-gray-50">
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job ID</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jurisdiction</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent Date</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
@@ -3148,7 +3050,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                       <tr key={job.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{job.id}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{job.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{job.jurisdiction}</td>
                         <td className="px-4 py-3">{getStatusBadge(job.status)}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{job.sentDate ? formatDate(job.sentDate) : 'Not sent'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{job.items}</td>
@@ -3171,7 +3072,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
         <p className="text-gray-600 mt-1">Generate detailed reports and performance metrics</p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <button
           onClick={() => {
             const payload = buildReportPayload('delivery');
@@ -3188,24 +3089,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
           <p className="text-sm text-gray-600">On-time delivery rates, average transit times, and carrier performance</p>
           <span className="mt-4 inline-flex items-center text-blue-600 text-sm font-medium">Generate Report <ChevronRight className="w-4 h-4 ml-1" /></span>
         </button>
-        
-        <button
-          onClick={() => {
-            const payload = buildReportPayload('jurisdiction');
-            if (payload) {
-              setReportModal(payload);
-            } else {
-              alert('No jurisdiction data available.');
-            }
-          }}
-          className="bg-white text-left rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow"
-        >
-          <Building className="w-8 h-8 text-green-600 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Jurisdiction Summary</h3>
-          <p className="text-sm text-gray-600">Mail volumes, costs, and compliance metrics by jurisdiction</p>
-          <span className="mt-4 inline-flex items-center text-blue-600 text-sm font-medium">Generate Report <ChevronRight className="w-4 h-4 ml-1" /></span>
-        </button>
-        
+
         <button
           onClick={() => {
             const payload = buildReportPayload('exception');
@@ -3336,23 +3220,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     value={jobData.jobName}
                     onChange={(e) => setJobData({...jobData, jobName: e.target.value})}
                   />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Jurisdiction *
-                  </label>
-                  <select 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={jobData.jurisdiction}
-                    onChange={(e) => setJobData({...jobData, jurisdiction: e.target.value})}
-                  >
-                    <option value="">Select Jurisdiction</option>
-                    <option value="CA">California</option>
-                    <option value="NY">New York</option>
-                    <option value="TX">Texas</option>
-                    <option value="FL">Florida</option>
-                  </select>
                 </div>
                 
                 <div>
@@ -3893,12 +3760,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                     <dd className="mt-1 text-sm text-gray-900">{jobData.jobName || 'Not specified'}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Jurisdiction</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      {jobData.jurisdiction ? `${jobData.jurisdiction}` : 'Not selected'}
-                    </dd>
-                  </div>
-                  <div>
                     <dt className="text-sm font-medium text-gray-500">Priority</dt>
                     <dd className="mt-1 text-sm text-gray-900">{jobData.priority}</dd>
                   </div>
@@ -4181,10 +4042,6 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,C
                   <span className="flex items-center">
                     <Hash className="w-4 h-4 mr-1" />
                     {selectedJob.id}
-                  </span>
-                  <span className="flex items-center">
-                    <Building className="w-4 h-4 mr-1" />
-                    {selectedJob.jurisdiction}
                   </span>
                   <span className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />

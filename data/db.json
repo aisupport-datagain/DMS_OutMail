@@ -2,7 +2,7 @@
   "enterprises": [
     {
       "id": "ENT-001",
-      "name": "KPMG Subclient",
+      "name": "Calpine Energy Services",
       "contact": "Mary Collins",
       "email": "mary.collins@kpmg.com",
       "phone": "(555) 201-8844",
@@ -33,7 +33,7 @@
     },
     {
       "id": "ENT-003",
-      "name": "Client Services Group",
+      "name": "Constillation Energy Group",
       "contact": "Kim Patel",
       "email": "kpatel@clientservices.com",
       "phone": "(555) 409-7788",
@@ -249,7 +249,7 @@
   "recipients": [
     {
       "id": "REC-001",
-      "name": "Johnson Holdings LLC",
+      "name": "Harris County Tax Office",
       "recipientName": "John Smith",
       "organizationId": "ORG-001",
       "address": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
@@ -274,7 +274,7 @@
     },
     {
       "id": "REC-002",
-      "name": "Smith Manufacturing Co.",
+      "name": "Erath County Tax Assessor-Collector",
       "recipientName": "Sarah Johnson",
       "organizationId": "ORG-002",
       "address": "456 Industrial Way, San Francisco, CA 94105",
@@ -298,7 +298,7 @@
     },
     {
       "id": "REC-003",
-      "name": "Davis Enterprises",
+      "name": "Travis County Tax Office",
       "recipientName": "Michael Davis",
       "organizationId": "ORG-003",
       "address": "789 Commerce St, Sacramento, CA 95814",
@@ -326,7 +326,6 @@
     {
       "id": "JOB-001",
       "name": "Q4 Tax Returns - California",
-      "jurisdiction": "CA",
       "status": "delivered",
       "sentDate": "2025-01-15",
       "items": 245,
@@ -338,7 +337,6 @@
     {
       "id": "JOB-002",
       "name": "Annual Filings - New York",
-      "jurisdiction": "NY",
       "status": "in-transit",
       "sentDate": "2025-01-18",
       "items": 182,
@@ -350,7 +348,6 @@
     {
       "id": "JOB-003",
       "name": "Property Tax Notices - Texas",
-      "jurisdiction": "TX",
       "status": "pending-approval",
       "sentDate": null,
       "items": 320,
@@ -362,7 +359,6 @@
     {
       "id": "JOB-004",
       "name": "Business License Renewals - Florida",
-      "jurisdiction": "FL",
       "status": "draft",
       "sentDate": null,
       "items": 89,
