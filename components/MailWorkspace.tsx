@@ -6332,6 +6332,42 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
       return recipients.filter(recipient => recipient.jobId === selectedJob.id);
     }, [recipients, selectedJob]);
 
+    const jobRecipientSummary = useMemo(() => {
+      const baseSummary = {
+        totalItems: selectedJob?.items || 0,
+        delivered: selectedJob?.delivered || 0,
+        inTransit: selectedJob?.inTransit || 0,
+        exceptions: selectedJob?.exceptions || 0,
+        derived: false
+      };
+
+      if (!selectedJob || jobRecipients.length === 0) {
+        return baseSummary;
+      }
+
+      const summary = jobRecipients.reduce(
+        (acc, recipient) => {
+          acc.totalItems += 1;
+          const status = (recipient.status || '').toLowerCase();
+          const isDelivered = status === 'delivered';
+          const isException = ['exception', 'manual-review', 'return-to-sender', 'address-error'].includes(status);
+          if (isDelivered) {
+            acc.delivered += 1;
+            return acc;
+          }
+          if (isException) {
+            acc.exceptions += 1;
+            return acc;
+          }
+          acc.inTransit += 1;
+          return acc;
+        },
+        { totalItems: 0, delivered: 0, inTransit: 0, exceptions: 0, derived: true }
+      );
+
+      return summary;
+    }, [jobRecipients, selectedJob]);
+
     useEffect(() => {
       setDetailRecipient(null);
       setExpandedRow(null);
@@ -6425,21 +6461,26 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
             <div className="grid grid-cols-4 gap-4">
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-600">Total Items</p>
-                <p className="text-xl font-bold text-gray-900">{selectedJob.items}</p>
+                <p className="text-xl font-bold text-gray-900">{jobRecipientSummary.totalItems}</p>
               </div>
               <div className="bg-green-50 rounded-lg p-3">
                 <p className="text-xs text-green-600">Delivered</p>
-                <p className="text-xl font-bold text-green-900">{selectedJob.delivered}</p>
+                <p className="text-xl font-bold text-green-900">{jobRecipientSummary.delivered}</p>
               </div>
               <div className="bg-blue-50 rounded-lg p-3">
                 <p className="text-xs text-blue-600">In Transit</p>
-                <p className="text-xl font-bold text-blue-900">{selectedJob.inTransit}</p>
+                <p className="text-xl font-bold text-blue-900">{jobRecipientSummary.inTransit}</p>
               </div>
               <div className="bg-red-50 rounded-lg p-3">
                 <p className="text-xs text-red-600">Exceptions</p>
-                <p className="text-xl font-bold text-red-900">{selectedJob.exceptions}</p>
+                <p className="text-xl font-bold text-red-900">{jobRecipientSummary.exceptions}</p>
               </div>
             </div>
+            {jobRecipientSummary.derived && (
+              <p className="mt-3 text-xs text-gray-500">
+                Totals shown reflect the {jobRecipients.length} mail item{jobRecipients.length === 1 ? '' : 's'} attached to this job.
+              </p>
+            )}
           </div>
         )}
 
