@@ -6923,7 +6923,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
 
             const jobNameBase =
               data.senderOrganizationName && data.recipientOrganizationName
-                ? `${data.senderOrganizationName} → ${data.recipientOrganizationName}`
+                ? `${data.senderOrganizationName} -> ${data.recipientOrganizationName}`
                 : data.recipientOrganizationName || data.senderOrganizationName || 'Quick Mail';
             const jobName = `Quick Mail - ${jobNameBase}`;
             const sentDate = now.toISOString().slice(0, 10);
