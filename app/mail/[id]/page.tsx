@@ -11,7 +11,6 @@ import {
   Phone,
   AtSign,
   Check,
-  Upload,
   RefreshCw
 } from 'lucide-react';
 
@@ -46,9 +45,18 @@ type ParticipantRecord = {
 type DocumentRecord = {
   id: string;
   name: string;
+  displayName?: string;
   pages?: number;
   size?: string;
+  uploadedAt?: string;
+  fileName?: string;
+  fileUrl?: string;
+  referenceKey?: string;
+  source?: 'seed' | 'upload';
 };
+
+const getDocumentLabel = (document?: DocumentRecord | null) =>
+  (document && (document.displayName || document.name)) || '';
 
 type OrganizationRecord = {
   id: string;
@@ -74,6 +82,7 @@ type MailGroupRecord = {
   status: string;
   deliveryType: string;
   documents: DocumentRecord[];
+  mailOptions: MailOptions;
   sender: ParticipantRecord;
   recipient: ParticipantRecord;
   trackingNumber?: string | null;
@@ -132,6 +141,29 @@ const formatStructuredAddress = (address?: StructuredAddress | null) => {
 };
 
 type ParticipantRole = 'sender' | 'recipient';
+
+type MailOptionKey = 'certifiedReceipt' | 'returnEnvelope' | 'deliveryConfirmation' | 'coverLetter';
+
+type MailOptions = Record<MailOptionKey, boolean>;
+
+const defaultMailOptions = (): MailOptions => ({
+  certifiedReceipt: true,
+  returnEnvelope: false,
+  deliveryConfirmation: true,
+  coverLetter: false
+});
+
+const normalizeMailOptions = (options?: Partial<MailOptions> | null): MailOptions => ({
+  ...defaultMailOptions(),
+  ...(options || {})
+});
+
+const MAIL_OPTION_CONFIG: Array<{ key: MailOptionKey; label: string }> = [
+  { key: 'certifiedReceipt', label: 'Include certified mail receipt' },
+  { key: 'returnEnvelope', label: 'Add return envelope' },
+  { key: 'deliveryConfirmation', label: 'Request delivery confirmation' },
+  { key: 'coverLetter', label: 'Include cover letter' }
+];
 
 type AddressFieldKey =
   | 'streetAddress'
@@ -238,7 +270,10 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
           if (rawGroup) {
             const parsed = JSON.parse(rawGroup);
             if (parsed?.id === params.id) {
-              storedGroup = parsed;
+              storedGroup = {
+                ...parsed,
+                mailOptions: normalizeMailOptions(parsed.mailOptions)
+              };
             }
           }
           const storedEnterprises = window.sessionStorage.getItem(MAIL_DETAILS_ENTERPRISES_KEY);
@@ -268,7 +303,35 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
             addresses: (org.addresses || []).map((addr: any) => normalizeStructuredAddress(addr))
           }));
           setOrganizations(orgs);
-          setDocuments(payload.uploadedFiles || []);
+          const uploadedDocs: DocumentRecord[] = (payload.uploadedFiles || []).map((file: any, index: number) => {
+            const fileName = file.fileName || file.name;
+            const displayName = file.displayName || fileName;
+            const fileUrl = fileName ? `/api/pdfs/${encodeURIComponent(fileName)}` : undefined;
+            return {
+              id: file.id || `UP-${index}`,
+              name: displayName,
+              displayName,
+              pages: file.pages,
+              size: file.size,
+              fileName,
+              referenceKey: fileName || displayName,
+              fileUrl,
+              source: 'seed'
+            };
+          });
+          const lookupByName = uploadedDocs.reduce((acc, doc) => {
+            acc[doc.name] = doc;
+            if (doc.fileName) {
+              acc[doc.fileName] = doc;
+            }
+            if (doc.displayName) {
+              acc[doc.displayName] = doc;
+            }
+            if (doc.referenceKey) {
+              acc[doc.referenceKey] = doc;
+            }
+            return acc;
+          }, {} as Record<string, DocumentRecord>);
 
           const target = (payload.recipients || []).find((item: any) => item.id === params.id);
           if (!target) {
@@ -284,31 +347,76 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
             sender,
             recipient: target.recipient
           } as MailGroupRecord);
+          const normalizedDocuments: DocumentRecord[] = (target.documents || []).map((doc: any, index: number) => {
+            if (!doc) return null;
+            if (typeof doc === 'object') {
+              const fileName = doc.fileName || doc.referenceKey || doc.name;
+              const displayName = doc.displayName || doc.name || fileName;
+              const fileUrl =
+                doc.fileUrl ||
+                (fileName ? `/api/pdfs/${encodeURIComponent(fileName)}` : undefined);
+              return {
+                id: doc.id || `${target.id || params.id}-DOC-${index}`,
+                name: displayName,
+                displayName,
+                pages: doc.pages || Math.floor(Math.random() * 120) + 30,
+                size: doc.size || 'N/A',
+                fileName,
+                referenceKey: fileName || displayName,
+                fileUrl,
+                source: doc.source || 'seed'
+              } as DocumentRecord;
+            }
+            const match = lookupByName[doc];
+            if (match) {
+              return {
+                ...match,
+                id: `${target.id || params.id}-DOC-${index}`
+              };
+            }
+            const fallbackName = typeof doc === 'string' ? doc : `Document ${index + 1}`;
+            return {
+              id: `${target.id || params.id}-DOC-${index}`,
+              name: fallbackName,
+              displayName: fallbackName,
+              pages: Math.floor(Math.random() * 120) + 30,
+              size: 'Unknown',
+              fileName: fallbackName,
+              referenceKey: fallbackName
+            } as DocumentRecord;
+          }).filter(Boolean) as DocumentRecord[];
+
+          setDocuments(normalizedDocuments);
+
           const normalized: MailGroupRecord = {
             ...target,
-            documents: (target.documents || []).map((doc: any, index: number) =>
-              typeof doc === 'string'
-                ? { id: `${target.id || params.id}-DOC-${index}`, name: doc }
-                : doc
-            ),
+            documents: normalizedDocuments,
             sender,
             recipient,
             senderEnterpriseId: sender.enterpriseId || payload.enterprises?.[0]?.id || null,
             senderAddress: sender.address ? formatStructuredAddress(sender.address) : '',
             address: recipient.address ? formatStructuredAddress(recipient.address) : target.address || '',
             name: target.name || target.recipientName || '',
-            recipientName: target.recipientName || target.name || ''
+            recipientName: target.recipientName || target.name || '',
+            mailOptions: normalizeMailOptions(target.mailOptions)
           };
           storedGroup = normalized;
         } else {
           setDocuments(prev => (prev.length ? prev : storedGroup?.documents || []));
         }
 
-        setForm(storedGroup);
+        if (!storedGroup) {
+          throw new Error('Mail group could not be loaded');
+        }
+
+        setForm({
+          ...storedGroup,
+          mailOptions: normalizeMailOptions(storedGroup.mailOptions)
+        });
         setLoading(false);
       } catch (err) {
         console.error(err);
-        setError('Unable to load mail details.');
+        setError('Mail details unavailable. Please reopen this mail from the Send Mail workflow.');
         setLoading(false);
       }
     };
@@ -322,7 +430,8 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
       const base: MailGroupRecord = {
         ...prev,
         sender: cloneParticipant(prev.sender) || ensureParticipant('sender', prev),
-        recipient: cloneParticipant(prev.recipient) || ensureParticipant('recipient', prev)
+        recipient: cloneParticipant(prev.recipient) || ensureParticipant('recipient', prev),
+        mailOptions: normalizeMailOptions(prev.mailOptions)
       };
       const next = updater(base);
       return next;
@@ -375,6 +484,19 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
     });
   };
 
+  const handleMailOptionToggle = (key: MailOptionKey) => {
+    updateForm(prev => {
+      const currentOptions = normalizeMailOptions(prev.mailOptions);
+      return {
+        ...prev,
+        mailOptions: {
+          ...currentOptions,
+          [key]: !currentOptions[key]
+        }
+      };
+    });
+  };
+
   const handleSave = () => {
     if (!form) return;
     try {
@@ -399,6 +521,11 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
       recipient: formatStructuredAddress(form.recipient?.address) || form.address || 'Not set'
     };
   }, [form]);
+
+  const mailOptions = useMemo(() => normalizeMailOptions(form?.mailOptions), [form]);
+  const primaryDocument = documents[0] || null;
+  const additionalDocuments = documents.slice(1);
+  const primaryDocumentLabel = getDocumentLabel(primaryDocument);
 
   if (loading) {
     return (
@@ -633,30 +760,50 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
 
           <aside className="space-y-4">
             <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase text-gray-400">Document Preview</p>
-                  <h3 className="text-sm font-semibold text-gray-900 mt-1">
-                    {documents[0]?.name || 'Preview.pdf'}
-                  </h3>
-                </div>
-                <button className="text-xs text-blue-600 hover:text-blue-700 flex items-center">
-                  <Upload className="w-4 h-4 mr-1" />
-                  Upload
-                </button>
-              </div>
-              <div className="aspect-[3/4] bg-gray-100 flex items-center justify-center">
-                <iframe
-                  src="/sample-mail.pdf"
-                  title="Mail preview"
-                  className="w-full h-full"
-                />
-              </div>
-              <div className="px-4 py-3 border-t border-gray-200">
-                <p className="text-xs text-gray-500">
-                  Showing sample preview. Replace with generated PDF for this mail group.
+              <div className="px-4 py-3 border-b border-gray-200">
+                <p className="text-xs uppercase text-gray-400">Document Preview</p>
+                <h3 className="text-sm font-semibold text-gray-900 mt-1">
+                  {primaryDocumentLabel || 'No document attached'}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {documents.length
+                    ? `${documents.length} file${documents.length === 1 ? '' : 's'} attached`
+                    : 'Upload documents from the workspace wizard.'}
                 </p>
               </div>
+              <div className="aspect-[8.5/11] bg-gray-100 flex items-center justify-center text-center px-4">
+                {primaryDocument ? (
+                  <div>
+                    <FileText className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+                    <p className="text-sm text-gray-900">
+                      {primaryDocumentLabel.length > 40
+                        ? `${primaryDocumentLabel.slice(0, 37)}...`
+                        : primaryDocumentLabel}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {primaryDocument.pages ? `${primaryDocument.pages} pages` : 'PDF document'}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <FileText className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">No documents linked to this mail group.</p>
+                  </div>
+                )}
+              </div>
+              {additionalDocuments.length > 0 && (
+                <div className="px-4 py-3 border-t border-gray-200">
+                  <p className="text-xs uppercase text-gray-400 mb-2">Additional Documents</p>
+                  <ul className="space-y-1 text-sm text-gray-700">
+                    {additionalDocuments.map((doc) => (
+                      <li key={doc.id} className="flex items-center gap-2">
+                        <FileText className="w-3 h-3 text-gray-400" />
+                        <span>{getDocumentLabel(doc)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="border border-gray-200 rounded-lg bg-white p-4 space-y-3">
               <div>
@@ -668,6 +815,22 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
               <div>
                 <p className="text-xs uppercase text-gray-400 mb-1">Delivery Type</p>
                 <p className="text-sm text-gray-900">{form.deliveryType}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-gray-400 mb-1">Mail Options</p>
+                <div className="space-y-2">
+                  {MAIL_OPTION_CONFIG.map(option => (
+                    <label key={option.key} className="flex items-start gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={mailOptions[option.key]}
+                        onChange={() => handleMailOptionToggle(option.key)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div>
                 <p className="text-xs uppercase text-gray-400 mb-1">Notes</p>

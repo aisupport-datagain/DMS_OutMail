@@ -228,100 +228,39 @@
   ],
   "uploadedFiles": [
     {
-      "id": 1,
-      "name": "TAX-RETURN-2024-Q4-BATCH1.pdf",
-      "pages": 125,
-      "size": "2.3 MB"
+      "id": "PDF-001",
+      "name": "Calpine Notice (4) - Copy.pdf",
+      "displayName": "Calpine Energy Notice",
+      "pages": 32,
+      "size": "1.2 MB",
+      "fileName": "Calpine Notice (4) - Copy.pdf"
     },
     {
-      "id": 2,
-      "name": "TAX-RETURN-2024-Q4-BATCH2.pdf",
-      "pages": 98,
-      "size": "1.8 MB"
+      "id": "PDF-002",
+      "name": "Vistra Houston Notice.pdf",
+      "displayName": "Vistra Houston Notice",
+      "pages": 18,
+      "size": "1.5 MB",
+      "fileName": "Vistra Houston Notice.pdf"
     },
     {
-      "id": 3,
-      "name": "TAX-RETURN-2024-Q4-BATCH3.pdf",
-      "pages": 156,
-      "size": "3.1 MB"
+      "id": "PDF-003",
+      "name": "BAUSCH & LOMB AMERICAS INC. Notice - Copy - Copy (2) - Copy.pdf",
+      "displayName": "Bausch & Lomb Compliance Notice",
+      "pages": 14,
+      "size": "980 KB",
+      "fileName": "BAUSCH & LOMB AMERICAS INC. Notice - Copy - Copy (2) - Copy.pdf"
+    },
+    {
+      "id": "PDF-004",
+      "name": "TAX BILL_VISTRA ENERGY-LUMINANT MINING COMPANY, LLC-2024-TX-TITUS CAD-3382-4.2612 - Copy_dup1 - Copy.pdf",
+      "displayName": "Vistra Energy Tax Bill",
+      "pages": 22,
+      "size": "2.1 MB",
+      "fileName": "TAX BILL_VISTRA ENERGY-LUMINANT MINING COMPANY, LLC-2024-TX-TITUS CAD-3382-4.2612 - Copy_dup1 - Copy.pdf"
     }
   ],
-  "recipients": [
-    {
-      "id": "REC-001",
-      "name": "Harris County Tax Office",
-      "recipientName": "John Smith",
-      "organizationId": "ORG-001",
-      "address": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
-      "trackingNumber": "9400111899562123456789",
-      "status": "delivered",
-      "deliveredDate": "2025-01-17 14:32",
-      "documents": [
-        "TAX-RETURN-2024-Q4-BATCH1.pdf",
-        "TAX-RETURN-2024-Q4-BATCH2.pdf"
-      ],
-      "deliveryType": "Certified Mail",
-      "email": "contact@johnsonholdings.com",
-      "phone": "(555) 123-4567",
-      "addressParts": {
-        "streetAddress": "123 Business Park Dr, Suite 200",
-        "city": "Los Angeles",
-        "state": "CA",
-        "county": "Los Angeles County",
-        "country": "USA",
-        "postalCode": "90025"
-      }
-    },
-    {
-      "id": "REC-002",
-      "name": "Erath County Tax Assessor-Collector",
-      "recipientName": "Sarah Johnson",
-      "organizationId": "ORG-002",
-      "address": "456 Industrial Way, San Francisco, CA 94105",
-      "trackingNumber": "9400111899562123456790",
-      "status": "in-transit",
-      "deliveredDate": null,
-      "documents": [
-        "TAX-RETURN-2024-Q4-BATCH2.pdf"
-      ],
-      "deliveryType": "First Class",
-      "email": "admin@smithmfg.com",
-      "phone": "(555) 234-5678",
-      "addressParts": {
-        "streetAddress": "456 Industrial Way",
-        "city": "San Francisco",
-        "state": "CA",
-        "county": "San Francisco County",
-        "country": "USA",
-        "postalCode": "94105"
-      }
-    },
-    {
-      "id": "REC-003",
-      "name": "Travis County Tax Office",
-      "recipientName": "Michael Davis",
-      "organizationId": "ORG-003",
-      "address": "789 Commerce St, Sacramento, CA 95814",
-      "trackingNumber": "9400111899562123456791",
-      "status": "exception",
-      "deliveredDate": null,
-      "documents": [
-        "TAX-RETURN-2024-Q4-BATCH3.pdf"
-      ],
-      "exceptionReason": "Address validation failed - Suite number missing",
-      "deliveryType": "Priority",
-      "email": "info@davisent.com",
-      "phone": "(555) 345-6789",
-      "addressParts": {
-        "streetAddress": "789 Commerce St, Suite 100",
-        "city": "Sacramento",
-        "state": "CA",
-        "county": "Sacramento County",
-        "country": "USA",
-        "postalCode": "95814"
-      }
-    }
-  ],
+  "recipients": [],
   "jobs": [
     {
       "id": "JOB-001",
