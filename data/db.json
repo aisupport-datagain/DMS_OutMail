@@ -13,7 +13,8 @@
       "recipientOrganizations": [
         "ORG-001",
         "ORG-002",
-        "ORG-003"
+        "ORG-003",
+        "ORG-006"
       ]
     },
     {
@@ -28,7 +29,8 @@
       ],
       "recipientOrganizations": [
         "ORG-003",
-        "ORG-004"
+        "ORG-004",
+        "ORG-008"
       ]
     },
     {
@@ -42,7 +44,8 @@
       ],
       "recipientOrganizations": [
         "ORG-001",
-        "ORG-005"
+        "ORG-005",
+        "ORG-007"
       ]
     }
   ],
@@ -178,6 +181,60 @@
           "county": "Orange County",
           "country": "USA",
           "postalCode": "92618"
+        }
+      ]
+    },
+    {
+      "id": "ORG-006",
+      "name": "Los Angeles County Treasurer and Tax Collector",
+      "addresses": [
+        {
+          "id": "ADDR-010",
+          "label": "Main Office",
+          "address": "500 W Temple St, Room 153, Los Angeles, CA 90012",
+          "default": true,
+          "streetAddress": "500 W Temple St, Room 153",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90012"
+        }
+      ]
+    },
+    {
+      "id": "ORG-007",
+      "name": "Titus County Tax Assessor-Collector",
+      "addresses": [
+        {
+          "id": "ADDR-011",
+          "label": "Tax Office",
+          "address": "106 N Van Buren Ave, Suite 101, Mount Pleasant, TX 75455",
+          "default": true,
+          "streetAddress": "106 N Van Buren Ave, Suite 101",
+          "city": "Mount Pleasant",
+          "state": "TX",
+          "county": "Titus County",
+          "country": "USA",
+          "postalCode": "75455"
+        }
+      ]
+    },
+    {
+      "id": "ORG-008",
+      "name": "Harris County Tax Assessor-Collector",
+      "addresses": [
+        {
+          "id": "ADDR-012",
+          "label": "Downtown Office",
+          "address": "1001 Preston St, Houston, TX 77002",
+          "default": true,
+          "streetAddress": "1001 Preston St",
+          "city": "Houston",
+          "state": "TX",
+          "county": "Harris County",
+          "country": "USA",
+          "postalCode": "77002"
         }
       ]
     }
