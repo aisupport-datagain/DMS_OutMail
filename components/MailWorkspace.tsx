@@ -2938,16 +2938,6 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const draftGroups = mailGroups.filter(group => !group.jobId);
 
     if (!draftGroups.length) {
-      setJobData(prev => {
-        if (!prev.senderOrganizationIds.length && !prev.recipientOrganizationIds.length) {
-          return prev;
-        }
-        return {
-          ...prev,
-          senderOrganizationIds: [],
-          recipientOrganizationIds: []
-        };
-      });
       return;
     }
 
