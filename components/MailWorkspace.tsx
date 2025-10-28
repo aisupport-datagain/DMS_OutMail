@@ -131,6 +131,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{
     top: number;
     left: number;
@@ -162,10 +163,15 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
 
     const handleClickAway = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery('');
+      const target = event.target as Node;
+      if (containerRef.current?.contains(target)) {
+        return;
       }
+      if (dropdownRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+      setQuery('');
     };
 
     document.addEventListener('mousedown', handleClickAway);
@@ -179,6 +185,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   }, []);
 
   useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     if (!open) {
       setDropdownPosition(null);
       return;
@@ -334,6 +344,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
       {open && isMounted && dropdownPosition && createPortal(
         <div
+          ref={dropdownRef}
           className="z-50 rounded-md border border-gray-200 bg-white shadow-lg"
           style={{
             position: 'fixed',
@@ -3406,7 +3417,58 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     return null;
   };
 
-  const trackingTimeline = trackingEvents;
+  const trackingEventOrder = useMemo(() => {
+    const order = new Map<string, number>();
+    trackingEvents.forEach((event, index) => {
+      order.set(event.event.toLowerCase(), index);
+    });
+    return order;
+  }, [trackingEvents]);
+
+  const getTrackingTimelineForRecipient = useCallback(
+    (recipient: MailGroupRecord) => {
+      if (!recipient) {
+        return [];
+      }
+
+      const recipientTimeline = (recipient as unknown as { trackingEvents?: TrackingEventRecord[] })?.trackingEvents || [];
+      if (Array.isArray(recipientTimeline) && recipientTimeline.length > 0) {
+        return recipientTimeline;
+      }
+
+      if (!trackingEvents.length || !recipient.trackingNumber) {
+        return [];
+      }
+
+      const normalizedStatus = (recipient.status || '').toLowerCase();
+      const statusToFinalEvent: Record<string, string> = {
+        delivered: 'Delivered',
+        'in-transit': 'In Transit',
+        exception: 'In Transit',
+        'manual-review': 'In Transit',
+        pending: 'Label Created'
+      };
+
+      let targetEventName = statusToFinalEvent[normalizedStatus];
+      if (!targetEventName) {
+        targetEventName = recipient.deliveredDate ? 'Delivered' : 'In Transit';
+      }
+
+      const normalizedEvent = targetEventName.toLowerCase();
+      let limitIndex = trackingEventOrder.get(normalizedEvent);
+
+      if (typeof limitIndex !== 'number') {
+        limitIndex = trackingEventOrder.get('in transit') ?? trackingEvents.length - 1;
+      }
+
+      if (limitIndex < 0) {
+        return [];
+      }
+
+      return trackingEvents.slice(0, limitIndex + 1);
+    },
+    [trackingEventOrder, trackingEvents]
+  );
 
   const getStatusBadge = (status) => {
     const statusConfig = {
@@ -5923,87 +5985,97 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {jobRecipients.map((recipient) => (
-                  <React.Fragment key={recipient.id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {recipient.name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {recipient.address}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-mono">
-                        {recipient.trackingNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(recipient.status)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {recipient.deliveredDate || 'In Progress'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <button 
-                          onClick={() => setExpandedRow(expandedRow === recipient.id ? null : recipient.id)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          {expandedRow === recipient.id ? (
-                            <ChevronDown className="w-4 h-4" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4" />
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                    
-                    {expandedRow === recipient.id && (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-4 bg-gray-50">
-                          <div className="space-y-4">
-                            {recipient.status === 'exception' && (
-                              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                <p className="text-sm font-medium text-red-900">Exception Details</p>
-                                <p className="text-sm text-red-700 mt-1">{recipient.exceptionReason}</p>
-                                <div className="mt-2 space-x-2">
-                                  <button className="text-xs text-blue-600 hover:text-blue-800">Update Address</button>
-                                  <button className="text-xs text-blue-600 hover:text-blue-800">Retry Delivery</button>
-                                </div>
-                              </div>
+                {jobRecipients.map((recipient) => {
+                  const timeline = getTrackingTimelineForRecipient(recipient);
+                  const hasTrackingNumber = Boolean(recipient.trackingNumber);
+                  return (
+                    <React.Fragment key={recipient.id}>
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {recipient.name}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {recipient.address}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-mono">
+                          {recipient.trackingNumber || 'Pending'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getStatusBadge(recipient.status)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {recipient.deliveredDate || 'In Progress'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => setExpandedRow(expandedRow === recipient.id ? null : recipient.id)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            {expandedRow === recipient.id ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
                             )}
-                            
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 mb-2">Tracking Timeline</p>
-                              <div className="space-y-2">
-                                {trackingTimeline.map((event, index) => (
-                                  <div key={index} className="flex items-start space-x-3">
-                                    <div className="mt-0.5">
-                                      {index === trackingTimeline.length - 1 ? (
-                                        <CheckCircle className="w-4 h-4 text-green-600" />
-                                      ) : (
-                                        <div className="w-4 h-4 rounded-full bg-gray-300" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <div className="flex justify-between">
-                                        <p className="text-sm font-medium text-gray-900">{event.event}</p>
-                                        <p className="text-xs text-gray-500">{event.timestamp}</p>
-                                      </div>
-                                      <p className="text-xs text-gray-500">{event.location}</p>
-                                      {event.signature && (
-                                        <p className="text-xs text-green-600 mt-1">
-                                          Signed by: {event.signature}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
+
+                      {expandedRow === recipient.id && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                            <div className="space-y-4">
+                              {recipient.status === 'exception' && (
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                  <p className="text-sm font-medium text-red-900">Exception Details</p>
+                                  <p className="text-sm text-red-700 mt-1">{recipient.exceptionReason}</p>
+                                  <div className="mt-2 space-x-2">
+                                    <button className="text-xs text-blue-600 hover:text-blue-800">Update Address</button>
+                                    <button className="text-xs text-blue-600 hover:text-blue-800">Retry Delivery</button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div>
+                                <p className="text-sm font-medium text-gray-900 mb-2">Tracking Timeline</p>
+                                <div className="space-y-2">
+                                  {timeline.length > 0 ? (
+                                    timeline.map((event, index) => (
+                                      <div key={index} className="flex items-start space-x-3">
+                                        <div className="mt-0.5">
+                                          {index === timeline.length - 1 ? (
+                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                          ) : (
+                                            <div className="w-4 h-4 rounded-full bg-gray-300" />
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="flex justify-between">
+                                            <p className="text-sm font-medium text-gray-900">{event.event}</p>
+                                            <p className="text-xs text-gray-500">{event.timestamp}</p>
+                                          </div>
+                                          <p className="text-xs text-gray-500">{event.location}</p>
+                                          {event.signature && (
+                                            <p className="text-xs text-green-600 mt-1">Signed by: {event.signature}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-sm text-gray-500">
+                                      {hasTrackingNumber
+                                        ? 'Tracking updates not yet available.'
+                                        : 'Tracking number pending assignment.'}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
