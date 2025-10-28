@@ -57,6 +57,7 @@ const MAIL_DETAILS_STORAGE_KEY = 'outmail:selected-mail-group';
 const MAIL_DETAILS_ENTERPRISES_KEY = `${MAIL_DETAILS_STORAGE_KEY}:enterprises`;
 const MAIL_DETAILS_ORGS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:organizations`;
 const MAIL_DETAILS_DOCUMENTS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:documents`;
+const MAIL_DETAILS_RETURN_PATH_KEY = `${MAIL_DETAILS_STORAGE_KEY}:return-path`;
 
 const WIZARD_JOB_STORAGE_KEY = 'outmail:wizard:job';
 const WIZARD_GROUPS_STORAGE_KEY = 'outmail:wizard:groups';
@@ -2811,6 +2812,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
       window.sessionStorage.removeItem(MAIL_DETAILS_ENTERPRISES_KEY);
       window.sessionStorage.removeItem(MAIL_DETAILS_ORGS_KEY);
       window.sessionStorage.removeItem(MAIL_DETAILS_DOCUMENTS_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_RETURN_PATH_KEY);
     }
     navigateTo('tracking');
     setWizardStep(1);
@@ -3071,6 +3073,17 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const targetGroup = overrideGroup || mailGroups.find(group => group.id === groupId);
     if (!targetGroup) {
       return;
+    }
+    if (typeof window !== 'undefined') {
+      const currentPath =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      try {
+        window.sessionStorage.setItem(MAIL_DETAILS_RETURN_PATH_KEY, currentPath);
+      } catch (storageError) {
+        console.warn('Failed to persist mail detail return path', storageError);
+      }
     }
     persistMailDetailContext(targetGroup);
     router.push(`/mail/${groupId}`);

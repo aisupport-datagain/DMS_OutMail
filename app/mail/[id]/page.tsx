@@ -20,6 +20,7 @@ const MAIL_DETAILS_STORAGE_KEY = 'outmail:selected-mail-group';
 const MAIL_DETAILS_ENTERPRISES_KEY = `${MAIL_DETAILS_STORAGE_KEY}:enterprises`;
 const MAIL_DETAILS_ORGS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:organizations`;
 const MAIL_DETAILS_DOCUMENTS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:documents`;
+const MAIL_DETAILS_RETURN_PATH_KEY = `${MAIL_DETAILS_STORAGE_KEY}:return-path`;
 
 type StructuredAddress = {
   id?: string;
@@ -544,6 +545,23 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
     }
   };
 
+  const handleBack = () => {
+    if (typeof window !== 'undefined') {
+      const storedPath = window.sessionStorage.getItem(MAIL_DETAILS_RETURN_PATH_KEY);
+      if (storedPath) {
+        window.sessionStorage.removeItem(MAIL_DETAILS_RETURN_PATH_KEY);
+        router.push(storedPath);
+        return;
+      }
+      if (window.history.length > 1) {
+        router.back();
+        return;
+      }
+    }
+    const fallbackPath = form?.jobId ? '/track-mail' : '/send-mail/job-details';
+    router.push(fallbackPath);
+  };
+
   const handleSave = () => {
     if (!form) return;
     try {
@@ -760,7 +778,7 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push('/')}
+              onClick={handleBack}
               className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700"
             >
               <ArrowLeft className="w-4 h-4 mr-1" />
