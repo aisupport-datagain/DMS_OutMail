@@ -6320,7 +6320,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
             <div className="flex items-center space-x-8">
               <div className="flex items-center">
                 <Mail className="w-8 h-8 text-blue-600 mr-2" />
-                <span className="text-xl font-bold text-gray-900">MailFlow Pro</span>
+                <span className="text-xl font-bold text-gray-900">Datagain Cortex</span>
               </div>
               <div className="flex space-x-6">
                 <button

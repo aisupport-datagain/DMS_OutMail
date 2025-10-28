@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'MailFlow Pro',
+  title: 'Datagain Cortex',
   description: 'Outbound mail management demo UI'
 };
 
