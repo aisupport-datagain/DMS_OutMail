@@ -2934,19 +2934,33 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     if (!isWizardHydrated || activeView !== 'wizard') {
       return;
     }
-    if (!mailGroups.length) {
+
+    const draftGroups = mailGroups.filter(group => !group.jobId);
+
+    if (!draftGroups.length) {
+      setJobData(prev => {
+        if (!prev.senderOrganizationIds.length && !prev.recipientOrganizationIds.length) {
+          return prev;
+        }
+        return {
+          ...prev,
+          senderOrganizationIds: [],
+          recipientOrganizationIds: []
+        };
+      });
       return;
     }
+
     const derivedSenders = Array.from(
       new Set(
-        mailGroups
+        draftGroups
           .map(group => group.sender?.organizationId || null)
           .filter((value): value is string => Boolean(value))
       )
     );
     const derivedRecipients = Array.from(
       new Set(
-        mailGroups
+        draftGroups
           .map(group => group.recipient?.organizationId || null)
           .filter((value): value is string => Boolean(value))
       )
