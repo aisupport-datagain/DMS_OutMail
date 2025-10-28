@@ -1417,6 +1417,57 @@ const buildTimelineForJob = (sentOn: Date): TrackingEventRecord[] => {
   ];
 };
 
+const deriveTrackingTimeline = (
+  status: string,
+  deliveredDate: string | null | undefined,
+  template: TrackingEventRecord[]
+): TrackingEventRecord[] => {
+  if (!Array.isArray(template) || template.length === 0) {
+    return [];
+  }
+
+  const normalizedStatus = (status || '').toLowerCase();
+  const statusToFinalEvent: Record<string, string> = {
+    delivered: 'Delivered',
+    'in-transit': 'In Transit',
+    exception: 'In Transit',
+    'manual-review': 'In Transit',
+    pending: 'Label Created'
+  };
+
+  let targetEventName = statusToFinalEvent[normalizedStatus];
+  if (!targetEventName) {
+    targetEventName = deliveredDate ? 'Delivered' : 'In Transit';
+  }
+
+  const findIndexForEvent = (name: string) =>
+    template.findIndex(event => event.event.toLowerCase() === name);
+
+  const normalizedEvent = targetEventName.toLowerCase();
+  let limitIndex = findIndexForEvent(normalizedEvent);
+
+  if (limitIndex < 0) {
+    const fallbackTargets = ['in transit', 'picked up', 'label created'];
+    for (const fallback of fallbackTargets) {
+      const idx = findIndexForEvent(fallback);
+      if (idx >= 0) {
+        limitIndex = idx;
+        break;
+      }
+    }
+  }
+
+  if (limitIndex < 0 && normalizedEvent === 'delivered') {
+    limitIndex = template.length - 1;
+  }
+
+  if (limitIndex < 0) {
+    return [];
+  }
+
+  return template.slice(0, limitIndex + 1);
+};
+
 type ParticipantRecord = {
   enterpriseId: string | null;
   organizationId: string | null;
@@ -1442,6 +1493,7 @@ type MailGroupRecord = {
   recipient: ParticipantRecord;
   trackingNumber?: string | null;
   deliveredDate?: string | null;
+  trackingEvents?: TrackingEventRecord[];
   exceptionReason?: string;
   jobId?: string | null;
   // Legacy fields kept for backwards compatibility during refactor
@@ -2355,6 +2407,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
             address: rawAddress ? normalizeStructuredAddress(rawAddress) : null
           };
         };
+        const timelineTemplate: TrackingEventRecord[] = payload.trackingEvents || [];
         const recipientRecords: MailGroupRecord[] = (payload.recipients || []).map((entry: any, index: number) => {
           const groupId = entry.id || `REC-${index}`;
           const createDocumentFromSeed = (doc: any, docIndex: number): DocumentRecord | null => {
@@ -2434,6 +2487,11 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
             .map((doc: any, docIndex: number) => createDocumentFromSeed(doc, docIndex))
             .filter(Boolean) as DocumentRecord[];
 
+          const seedTimelineTemplate: TrackingEventRecord[] =
+            Array.isArray(entry.trackingEvents) && entry.trackingEvents.length > 0
+              ? entry.trackingEvents
+              : timelineTemplate;
+
           return {
             id: groupId,
             taskId: entry.taskId || '',
@@ -2463,7 +2521,12 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
             email: entry.email || recipientParticipant.email || '',
             phone: entry.phone || recipientParticipant.phone || '',
             notes: entry.notes || '',
-            sendMode: entry.sendMode || 'grouped'
+            sendMode: entry.sendMode || 'grouped',
+            trackingEvents: deriveTrackingTimeline(
+              entry.status || 'in-transit',
+              entry.deliveredDate || null,
+              seedTimelineTemplate
+            )
           };
         });
 
@@ -2765,6 +2828,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         status: 'pending',
         trackingNumber: null,
         deliveredDate: null,
+        trackingEvents: [],
         jobId: null,
         sender: {
           enterpriseId: defaultEnterpriseId,
@@ -2874,6 +2938,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
       .toUpperCase() || 'JOB';
     const jobId = `JOB-${nameSegment}-${uniqueSuffix}`;
 
+    const jobTimelineTemplate = buildTimelineForJob(now);
     const dispatchedGroups = mailGroups.map((group, index) => {
       if (!group.documents || group.documents.length === 0) {
         return group;
@@ -2885,7 +2950,8 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         status: 'in-transit',
         trackingNumber,
         deliveredDate: null,
-        jobId
+        jobId,
+        trackingEvents: deriveTrackingTimeline('in-transit', null, jobTimelineTemplate)
       };
     });
 
@@ -2908,7 +2974,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const nextJobs = sortJobsByDate(mergedJobs);
     setSampleJobs(nextJobs);
     setArchiveResults(nextJobs);
-    setTrackingEvents(buildTimelineForJob(now));
+    setTrackingEvents(jobTimelineTemplate);
     setSelectedJob(newJob);
 
     alert('Mail job dispatched successfully!');
@@ -3432,46 +3498,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         return [];
       }
 
-      const normalizedStatus = (recipient.status || '').toLowerCase();
-      const statusToFinalEvent: Record<string, string> = {
-        delivered: 'Delivered',
-        'in-transit': 'In Transit',
-        exception: 'In Transit',
-        'manual-review': 'In Transit',
-        pending: 'Label Created'
-      };
-
-      let targetEventName = statusToFinalEvent[normalizedStatus];
-      if (!targetEventName) {
-        targetEventName = recipient.deliveredDate ? 'Delivered' : 'In Transit';
-      }
-
-      const findIndexForEvent = (name: string) =>
-        trackingEvents.findIndex(event => event.event.toLowerCase() === name);
-
-      const normalizedEvent = targetEventName.toLowerCase();
-      let limitIndex = findIndexForEvent(normalizedEvent);
-
-      if (limitIndex < 0) {
-        const fallbackTargets = ['in transit', 'picked up', 'label created'];
-        for (const fallback of fallbackTargets) {
-          const idx = findIndexForEvent(fallback);
-          if (idx >= 0) {
-            limitIndex = idx;
-            break;
-          }
-        }
-      }
-
-      if (limitIndex < 0 && normalizedEvent === 'delivered') {
-        limitIndex = trackingEvents.length - 1;
-      }
-
-      if (limitIndex < 0) {
-        return [];
-      }
-
-      return trackingEvents.slice(0, limitIndex + 1);
+      return deriveTrackingTimeline(recipient.status, recipient.deliveredDate || null, trackingEvents);
     },
     [trackingEvents]
   );
@@ -4921,6 +4948,9 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                   value={jobData.priority}
                   onChange={(event) => {
                     const { value } = event.target;
+                    if (value !== 'low' && value !== 'standard' && value !== 'high' && value !== 'urgent') {
+                      return;
+                    }
                     setJobData(prev => ({
                       ...prev,
                       priority: value
@@ -6279,6 +6309,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
               status: 'pending',
               trackingNumber: null,
               deliveredDate: null,
+              trackingEvents: [],
               notes: data.notes || '',
               sender: senderParticipant,
               recipient: recipientParticipant

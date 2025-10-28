@@ -110,6 +110,7 @@ type MailGroupRecord = {
   recipientName?: string;
   status: string;
   deliveryType: string;
+  jobId?: string | null;
   documents: DocumentRecord[];
   mailOptions: MailOptions;
   sender: ParticipantRecord;
