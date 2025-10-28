@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Package,
@@ -130,6 +131,13 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   const selectedOption = useMemo(
     () => options.find(option => option.value === (value ?? '')) || null,
@@ -165,6 +173,67 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       document.removeEventListener('mousedown', handleClickAway);
     };
   }, [open]);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setDropdownPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (!containerRef.current) {
+        return;
+      }
+      const rect = containerRef.current.getBoundingClientRect();
+      const gap = 4;
+      const dropdownMaxHeight = 240; // keep menu within a comfortable height
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let left = rect.left;
+      const width = rect.width;
+      if (left + width > viewportWidth - 8) {
+        left = Math.max(8, viewportWidth - width - 8);
+      }
+
+      let top = rect.bottom + gap;
+      let maxHeight = Math.min(dropdownMaxHeight, viewportHeight - top - 8);
+
+      if (maxHeight < 120) {
+        const spaceAbove = rect.top - gap;
+        if (spaceAbove > 120) {
+          maxHeight = Math.min(dropdownMaxHeight, spaceAbove - 8);
+          top = Math.max(8, rect.top - gap - maxHeight);
+        } else {
+          maxHeight = Math.max(120, viewportHeight - (rect.bottom + gap) - 8);
+        }
+      }
+
+      if (top + maxHeight > viewportHeight - 8) {
+        top = Math.max(8, viewportHeight - maxHeight - 8);
+      }
+
+      setDropdownPosition({
+        top,
+        left,
+        width,
+        maxHeight
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, options, query, value]);
 
   const handleOptionSelect = useCallback(
     (optionValue: string) => {
@@ -263,9 +332,18 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         />
       </div>
 
-      {open && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
-          <ul className="max-h-48 overflow-y-auto py-1" role="listbox">
+      {open && isMounted && dropdownPosition && createPortal(
+        <div
+          className="z-50 rounded-md border border-gray-200 bg-white shadow-lg"
+          style={{
+            position: 'fixed',
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            maxHeight: dropdownPosition.maxHeight
+          }}
+        >
+          <ul className="max-h-[inherit] overflow-y-auto py-1" role="listbox">
             {filteredOptions.length === 0 && (
               <li className="px-3 py-2 text-sm text-gray-500">{emptyMessage}</li>
             )}
@@ -290,7 +368,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               );
             })}
           </ul>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
