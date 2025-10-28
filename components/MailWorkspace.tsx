@@ -6482,10 +6482,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                   </tr>
                 ) : (
                   jobRecipients.map((recipient) => {
-                  const timeline = getTrackingTimelineForRecipient(recipient);
-                  const hasTrackingNumber = Boolean(recipient.trackingNumber);
-                  return (
-                    <React.Fragment key={recipient.id}>
+                    const timeline = getTrackingTimelineForRecipient(recipient);
+                    const hasTrackingNumber = Boolean(recipient.trackingNumber);
+                    return (
+                      <React.Fragment key={recipient.id}>
                       <tr className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {recipient.name}
@@ -6579,9 +6579,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                           </td>
                         </tr>
                       )}
-                    </React.Fragment>
-                  );
-                }))
+                      </React.Fragment>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
