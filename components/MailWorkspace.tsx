@@ -5876,7 +5876,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
   };
 
   const TrackingView = () => {
-    const [expandedRow, setExpandedRow] = useState(null);
+    const [expandedRow, setExpandedRow] = useState<string | null>(null);
+    const [detailRecipient, setDetailRecipient] = useState<MailGroupRecord | null>(null);
     const jobRecipients = useMemo(() => {
       if (selectedJob) {
         const matches = recipients.filter(recipient => recipient.jobId === selectedJob.id);
@@ -5886,6 +5887,11 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
       }
       return recipients.filter(recipient => (recipient.documents?.length || 0) > 0);
     }, [recipients, selectedJob]);
+
+    useEffect(() => {
+      setDetailRecipient(null);
+      setExpandedRow(null);
+    }, [selectedJob]);
     
     return (
       <div className="p-6">
@@ -6046,16 +6052,26 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                           {recipient.deliveredDate || 'In Progress'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => setExpandedRow(expandedRow === recipient.id ? null : recipient.id)}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            {expandedRow === recipient.id ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
+                          <div className="flex items-center space-x-3">
+                            <button
+                              onClick={() => setExpandedRow(expandedRow === recipient.id ? null : recipient.id)}
+                              className="text-blue-600 hover:text-blue-900"
+                              aria-label={expandedRow === recipient.id ? 'Hide tracking timeline' : 'Show tracking timeline'}
+                            >
+                              {expandedRow === recipient.id ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => setDetailRecipient(recipient)}
+                              className="text-gray-600 hover:text-gray-900"
+                              aria-label="View mail details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -6119,6 +6135,167 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
             </table>
           </div>
         </div>
+        {detailRecipient && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-gray-900 bg-opacity-50"
+              onClick={() => setDetailRecipient(null)}
+            />
+            <div className="relative max-w-3xl w-full bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+              <div className="flex justify-between items-start px-6 py-4 border-b border-gray-200">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">{detailRecipient.name || 'Mail Details'}</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Tracking #{' '}
+                    {detailRecipient.trackingNumber ? (
+                      <span className="font-mono text-gray-700">{detailRecipient.trackingNumber}</span>
+                    ) : (
+                      'Pending Assignment'
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDetailRecipient(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close mail details"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="px-6 py-4 space-y-6 max-h-[70vh] overflow-y-auto">
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Mail Summary</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Status</p>
+                      <div className="mt-1">{getStatusBadge(detailRecipient.status)}</div>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Delivery Type</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.deliveryType || 'Certified Mail'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Last Update</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.deliveredDate || 'In Progress'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Job ID</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.jobId || 'Unassigned'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Recipient</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Name</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.recipientName || detailRecipient.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Email</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.email || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Phone</p>
+                      <p className="mt-1 text-gray-900">{detailRecipient.phone || 'Not provided'}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-gray-500">Address</p>
+                      <p className="mt-1 text-gray-900 whitespace-pre-line">
+                        {detailRecipient.address || 'No address on file'}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Sender</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Organization</p>
+                      <p className="mt-1 text-gray-900">
+                        {detailRecipient.sender?.organizationName || 'Not specified'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Contact</p>
+                      <p className="mt-1 text-gray-900">
+                        {detailRecipient.sender?.contactName || detailRecipient.senderContact || 'Not provided'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Email</p>
+                      <p className="mt-1 text-gray-900">
+                        {detailRecipient.sender?.email || detailRecipient.senderEmail || 'Not provided'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Phone</p>
+                      <p className="mt-1 text-gray-900">
+                        {detailRecipient.sender?.phone || detailRecipient.senderPhone || 'Not provided'}
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-gray-500">Address</p>
+                      <p className="mt-1 text-gray-900 whitespace-pre-line">
+                        {detailRecipient.sender?.address
+                          ? formatStructuredAddress(detailRecipient.sender.address)
+                          : detailRecipient.senderAddress || 'No address on file'}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Documents</h3>
+                  {detailRecipient.documents && detailRecipient.documents.length > 0 ? (
+                    <ul className="space-y-3 text-sm">
+                      {detailRecipient.documents.map(doc => (
+                        <li key={doc.id} className="flex justify-between items-center">
+                          <div>
+                            <p className="text-gray-900">{doc.displayName || doc.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {doc.pages ? `${doc.pages} pages • ` : ''}
+                              {doc.size || 'Size N/A'}
+                            </p>
+                          </div>
+                          {doc.fileUrl && (
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                            >
+                              View PDF
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500">No documents associated with this mail piece.</p>
+                  )}
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Mail Options</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    {Object.entries(detailRecipient.mailOptions || {}).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
+                        <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                        <span className={`text-xs font-medium ${value ? 'text-green-600' : 'text-gray-500'}`}>
+                          {value ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
