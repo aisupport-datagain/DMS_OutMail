@@ -11,8 +11,10 @@ import {
   Phone,
   AtSign,
   Check,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
+import { getCachedPdf, hydratePdfCache, removePdfFromCache } from '../../../utils/pdfCache';
 
 const MAIL_DETAILS_STORAGE_KEY = 'outmail:selected-mail-group';
 const MAIL_DETAILS_ENTERPRISES_KEY = `${MAIL_DETAILS_STORAGE_KEY}:enterprises`;
@@ -53,10 +55,36 @@ type DocumentRecord = {
   fileUrl?: string;
   referenceKey?: string;
   source?: 'seed' | 'upload';
+  cacheKey?: string;
 };
 
 const getDocumentLabel = (document?: DocumentRecord | null) =>
   (document && (document.displayName || document.name)) || '';
+
+const reviveDocumentFromStorage = (document: DocumentRecord): DocumentRecord => {
+  const revived = { ...document };
+  if (revived.cacheKey) {
+    const cached = getCachedPdf(revived.cacheKey);
+    if (cached) {
+      revived.fileUrl = cached;
+    }
+  } else if (revived.fileUrl?.startsWith('data:')) {
+    hydratePdfCache(revived.id, revived.fileUrl);
+  }
+  return revived;
+};
+
+const serializeDocumentForStorage = (document: DocumentRecord) => {
+  const serialized = { ...document };
+  if (serialized.cacheKey) {
+    if (getCachedPdf(serialized.cacheKey)) {
+      serialized.fileUrl = undefined;
+    }
+  } else if (serialized.fileUrl && serialized.fileUrl.startsWith('blob:')) {
+    serialized.fileUrl = undefined;
+  }
+  return serialized;
+};
 
 type OrganizationRecord = {
   id: string;
@@ -287,7 +315,8 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
             setOrganizations(JSON.parse(storedOrganizations));
           }
           if (storedDocuments) {
-            setDocuments(JSON.parse(storedDocuments));
+            const parsedDocuments = JSON.parse(storedDocuments) as DocumentRecord[];
+            setDocuments(parsedDocuments.map(reviveDocumentFromStorage));
           }
         }
 
@@ -364,7 +393,8 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
                 fileName,
                 referenceKey: fileName || displayName,
                 fileUrl,
-                source: doc.source || 'seed'
+                source: doc.source || 'seed',
+                cacheKey: doc.cacheKey
               } as DocumentRecord;
             }
             const match = lookupByName[doc];
@@ -384,7 +414,9 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
               fileName: fallbackName,
               referenceKey: fallbackName
             } as DocumentRecord;
-          }).filter(Boolean) as DocumentRecord[];
+          })
+            .filter(Boolean)
+            .map(doc => reviveDocumentFromStorage(doc as DocumentRecord)) as DocumentRecord[];
 
           setDocuments(normalizedDocuments);
 
@@ -497,6 +529,21 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
     });
   };
 
+  const handleRemoveDocument = (documentId: string) => {
+    const targetDoc = documents.find(doc => doc.id === documentId);
+    setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+    updateForm(prev => ({
+      ...prev,
+      documents: (prev.documents || []).filter(doc => doc.id !== documentId)
+    }));
+    if (targetDoc?.cacheKey) {
+      removePdfFromCache(targetDoc.cacheKey);
+    }
+    if (typeof window !== 'undefined' && targetDoc?.fileUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(targetDoc.fileUrl);
+    }
+  };
+
   const handleSave = () => {
     if (!form) return;
     try {
@@ -504,7 +551,10 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
         window.sessionStorage.setItem(MAIL_DETAILS_STORAGE_KEY, JSON.stringify(form));
         window.sessionStorage.setItem(MAIL_DETAILS_ENTERPRISES_KEY, JSON.stringify(enterprises));
         window.sessionStorage.setItem(MAIL_DETAILS_ORGS_KEY, JSON.stringify(organizations));
-        window.sessionStorage.setItem(MAIL_DETAILS_DOCUMENTS_KEY, JSON.stringify(documents));
+        window.sessionStorage.setItem(
+          MAIL_DETAILS_DOCUMENTS_KEY,
+          JSON.stringify(documents.map(serializeDocumentForStorage))
+        );
       }
       setSaveMessage('Changes stored for this session.');
       setTimeout(() => setSaveMessage(null), 3000);
@@ -760,16 +810,28 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
 
           <aside className="space-y-4">
             <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200">
-                <p className="text-xs uppercase text-gray-400">Document Preview</p>
-                <h3 className="text-sm font-semibold text-gray-900 mt-1">
-                  {primaryDocumentLabel || 'No document attached'}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  {documents.length
-                    ? `${documents.length} file${documents.length === 1 ? '' : 's'} attached`
-                    : 'Upload documents from the workspace wizard.'}
-                </p>
+              <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase text-gray-400">Document Preview</p>
+                  <h3 className="text-sm font-semibold text-gray-900 mt-1">
+                    {primaryDocumentLabel || 'No document attached'}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {documents.length
+                      ? `${documents.length} file${documents.length === 1 ? '' : 's'} attached`
+                      : 'Upload documents from the workspace wizard.'}
+                  </p>
+                </div>
+                {primaryDocument && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveDocument(primaryDocument.id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Remove
+                  </button>
+                )}
               </div>
               <div className="aspect-[8.5/11] bg-gray-100 flex items-center justify-center text-center px-4">
                 {primaryDocument ? (
@@ -796,9 +858,19 @@ const MailDetailPage = ({ params }: { params: { id: string } }) => {
                   <p className="text-xs uppercase text-gray-400 mb-2">Additional Documents</p>
                   <ul className="space-y-1 text-sm text-gray-700">
                     {additionalDocuments.map((doc) => (
-                      <li key={doc.id} className="flex items-center gap-2">
-                        <FileText className="w-3 h-3 text-gray-400" />
-                        <span>{getDocumentLabel(doc)}</span>
+                      <li key={doc.id} className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <FileText className="w-3 h-3 text-gray-400" />
+                          {getDocumentLabel(doc)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument(doc.id)}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Remove
+                        </button>
                       </li>
                     ))}
                   </ul>

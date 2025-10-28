@@ -317,7 +317,233 @@
       "fileName": "TAX BILL_VISTRA ENERGY-LUMINANT MINING COMPANY, LLC-2024-TX-TITUS CAD-3382-4.2612 - Copy_dup1 - Copy.pdf"
     }
   ],
-  "recipients": [],
+  "recipients": [
+    {
+      "id": "MAIL-JOB-001-001",
+      "taskId": "TASK-JOB-001-001",
+      "jobId": "JOB-001",
+      "name": "Q4 Tax Returns - California",
+      "recipientName": "Smith Manufacturing Co.",
+      "status": "delivered",
+      "deliveryType": "Certified Mail",
+      "trackingNumber": "TRK-JOB-001-0001",
+      "deliveredDate": "2025-01-17",
+      "documents": [
+        {
+          "id": "DOC-JOB-001-1",
+          "displayName": "Calpine Energy Notice",
+          "fileName": "Calpine Notice (4) - Copy.pdf",
+          "referenceKey": "Calpine Notice (4) - Copy.pdf",
+          "pages": 32,
+          "size": "1.2 MB",
+          "source": "seed"
+        }
+      ],
+      "mailOptions": {
+        "certifiedReceipt": true,
+        "returnEnvelope": false,
+        "deliveryConfirmation": true,
+        "coverLetter": false
+      },
+      "sender": {
+        "enterpriseId": "ENT-001",
+        "organizationId": "ORG-001",
+        "organizationName": "Johnson Holdings LLC",
+        "contactName": "Mary Collins",
+        "email": "mary.collins@kpmg.com",
+        "phone": "(555) 201-8844",
+        "addressId": "ADDR-001",
+        "address": {
+          "id": "ADDR-001",
+          "label": "Headquarters",
+          "streetAddress": "123 Business Park Dr, Suite 200",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90025"
+        }
+      },
+      "recipient": {
+        "enterpriseId": "ENT-002",
+        "organizationId": "ORG-002",
+        "organizationName": "Smith Manufacturing Co.",
+        "contactName": "David Wilson",
+        "email": "dwilson@smithmfg.com",
+        "phone": "(555) 201-3355",
+        "addressId": "ADDR-004",
+        "address": {
+          "id": "ADDR-004",
+          "label": "Main Office",
+          "streetAddress": "456 Industrial Way",
+          "city": "San Francisco",
+          "state": "CA",
+          "county": "San Francisco County",
+          "country": "USA",
+          "postalCode": "94105"
+        }
+      },
+      "senderEnterpriseId": "ENT-001",
+      "senderContact": "Mary Collins",
+      "senderEmail": "mary.collins@kpmg.com",
+      "senderPhone": "(555) 201-8844",
+      "senderAddress": "123 Business Park Dr, Suite 200, Los Angeles, CA 90025",
+      "organizationId": "ORG-002",
+      "address": "456 Industrial Way, San Francisco, CA 94105",
+      "email": "dwilson@smithmfg.com",
+      "phone": "(555) 201-3355",
+      "sendMode": "grouped"
+    },
+    {
+      "id": "MAIL-JOB-002-001",
+      "taskId": "TASK-JOB-002-001",
+      "jobId": "JOB-002",
+      "name": "Annual Filings - New York",
+      "recipientName": "Los Angeles County Treasurer and Tax Collector",
+      "status": "in-transit",
+      "deliveryType": "Certified Mail",
+      "trackingNumber": "TRK-JOB-002-0001",
+      "documents": [
+        {
+          "id": "DOC-JOB-002-1",
+          "displayName": "Vistra Houston Notice",
+          "fileName": "Vistra Houston Notice.pdf",
+          "referenceKey": "Vistra Houston Notice.pdf",
+          "pages": 18,
+          "size": "1.5 MB",
+          "source": "seed"
+        }
+      ],
+      "mailOptions": {
+        "certifiedReceipt": true,
+        "returnEnvelope": false,
+        "deliveryConfirmation": true,
+        "coverLetter": false
+      },
+      "sender": {
+        "enterpriseId": "ENT-002",
+        "organizationId": "ORG-005",
+        "organizationName": "Baker Industries",
+        "contactName": "Gavin Lee",
+        "email": "gavin.lee@bdo.com",
+        "phone": "(555) 201-3355",
+        "addressId": "ADDR-009",
+        "address": {
+          "id": "ADDR-009",
+          "label": "Main",
+          "streetAddress": "654 Innovation Blvd",
+          "city": "Irvine",
+          "state": "CA",
+          "county": "Orange County",
+          "country": "USA",
+          "postalCode": "92618"
+        }
+      },
+      "recipient": {
+        "enterpriseId": "ENT-001",
+        "organizationId": "ORG-006",
+        "organizationName": "Los Angeles County Treasurer and Tax Collector",
+        "contactName": "Property Tax Desk",
+        "email": "taxdesk@lacounty.gov",
+        "phone": "(555) 410-2200",
+        "addressId": "ADDR-010",
+        "address": {
+          "id": "ADDR-010",
+          "label": "Main Office",
+          "streetAddress": "500 W Temple St, Room 153",
+          "city": "Los Angeles",
+          "state": "CA",
+          "county": "Los Angeles County",
+          "country": "USA",
+          "postalCode": "90012"
+        }
+      },
+      "senderEnterpriseId": "ENT-002",
+      "senderContact": "Gavin Lee",
+      "senderEmail": "gavin.lee@bdo.com",
+      "senderPhone": "(555) 201-3355",
+      "senderAddress": "654 Innovation Blvd, Irvine, CA 92618",
+      "organizationId": "ORG-006",
+      "address": "500 W Temple St, Room 153, Los Angeles, CA 90012",
+      "email": "taxdesk@lacounty.gov",
+      "phone": "(555) 410-2200",
+      "sendMode": "grouped"
+    },
+    {
+      "id": "MAIL-JOB-003-001",
+      "taskId": "TASK-JOB-003-001",
+      "jobId": "JOB-003",
+      "name": "Property Tax Notices - Texas",
+      "recipientName": "Titus County Tax Assessor-Collector",
+      "status": "pending-approval",
+      "deliveryType": "Certified Mail",
+      "documents": [
+        {
+          "id": "DOC-JOB-003-1",
+          "displayName": "Bausch & Lomb Compliance Notice",
+          "fileName": "BAUSCH & LOMB AMERICAS INC. Notice - Copy - Copy (2) - Copy.pdf",
+          "referenceKey": "BAUSCH & LOMB AMERICAS INC. Notice - Copy - Copy (2) - Copy.pdf",
+          "pages": 14,
+          "size": "980 KB",
+          "source": "seed"
+        }
+      ],
+      "mailOptions": {
+        "certifiedReceipt": true,
+        "returnEnvelope": false,
+        "deliveryConfirmation": true,
+        "coverLetter": false
+      },
+      "sender": {
+        "enterpriseId": "ENT-003",
+        "organizationId": "ORG-003",
+        "organizationName": "Davis Enterprises",
+        "contactName": "Kim Patel",
+        "email": "kpatel@clientservices.com",
+        "phone": "(555) 409-7788",
+        "addressId": "ADDR-006",
+        "address": {
+          "id": "ADDR-006",
+          "label": "Corporate Office",
+          "streetAddress": "789 Commerce St, Suite 100",
+          "city": "Sacramento",
+          "state": "CA",
+          "county": "Sacramento County",
+          "country": "USA",
+          "postalCode": "95814"
+        }
+      },
+      "recipient": {
+        "enterpriseId": "ENT-001",
+        "organizationId": "ORG-007",
+        "organizationName": "Titus County Tax Assessor-Collector",
+        "contactName": "Office of the Tax Assessor",
+        "email": "taxes@tituscounty.gov",
+        "phone": "(555) 512-4400",
+        "addressId": "ADDR-011",
+        "address": {
+          "id": "ADDR-011",
+          "label": "Tax Office",
+          "streetAddress": "106 N Van Buren Ave, Suite 101",
+          "city": "Mount Pleasant",
+          "state": "TX",
+          "county": "Titus County",
+          "country": "USA",
+          "postalCode": "75455"
+        }
+      },
+      "senderEnterpriseId": "ENT-003",
+      "senderContact": "Kim Patel",
+      "senderEmail": "kpatel@clientservices.com",
+      "senderPhone": "(555) 409-7788",
+      "senderAddress": "789 Commerce St, Suite 100, Sacramento, CA 95814",
+      "organizationId": "ORG-007",
+      "address": "106 N Van Buren Ave, Suite 101, Mount Pleasant, TX 75455",
+      "email": "taxes@tituscounty.gov",
+      "phone": "(555) 512-4400",
+      "sendMode": "grouped"
+    }
+  ],
   "jobs": [
     {
       "id": "JOB-001",
@@ -393,9 +619,9 @@
     }
   ],
   "kpis": {
-    "activeJobs": 12,
-    "itemsInTransit": 1847,
-    "deliveredToday": 342,
-    "exceptions": 23
+    "activeJobs": 3,
+    "itemsInTransit": 135,
+    "deliveredToday": 238,
+    "exceptions": 9
   }
 }

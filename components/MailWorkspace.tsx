@@ -39,6 +39,12 @@ import {
   CornerUpLeft,
   ExternalLink
 } from 'lucide-react';
+import {
+  getCachedPdf,
+  hydratePdfCache,
+  removePdfFromCache,
+  storePdfInCache
+} from '../utils/pdfCache';
 
 const MAIL_STATUS_STYLES: Record<string, string> = {
   valid: 'bg-green-100 text-green-700',
@@ -54,6 +60,7 @@ const MAIL_DETAILS_DOCUMENTS_KEY = `${MAIL_DETAILS_STORAGE_KEY}:documents`;
 
 const WIZARD_JOB_STORAGE_KEY = 'outmail:wizard:job';
 const WIZARD_GROUPS_STORAGE_KEY = 'outmail:wizard:groups';
+const TRACK_JOBS_STORAGE_KEY = 'outmail:jobs';
 
 const SEND_MAIL_STEP_PREFIX = '/send-mail';
 const WIZARD_STEP_CONFIG = [
@@ -1163,6 +1170,160 @@ type DocumentRecord = {
   fileUrl?: string;
   referenceKey?: string;
   source?: 'seed' | 'upload';
+  cacheKey?: string;
+};
+
+type JobRecord = {
+  id: string;
+  name: string;
+  status: string;
+  sentDate: string | null;
+  items: number;
+  delivered: number;
+  inTransit: number;
+  exceptions: number;
+  priority: string;
+};
+
+type TrackingEventRecord = {
+  timestamp: string;
+  event: string;
+  location: string;
+  signature?: string;
+};
+
+const isValidJobRecord = (input: unknown): input is JobRecord => {
+  if (!input || typeof input !== 'object') return false;
+  const value = input as Record<string, unknown>;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.status === 'string'
+  );
+};
+
+const mergeJobsById = (base: JobRecord[], extras: JobRecord[]) => {
+  const map = new Map<string, JobRecord>();
+  base.forEach(job => map.set(job.id, job));
+  extras.forEach(job => map.set(job.id, job));
+  return Array.from(map.values());
+};
+
+const sortJobsByDate = (jobs: JobRecord[]) =>
+  [...jobs].sort((a, b) => {
+    const parseDate = (value?: string | null) => {
+      if (!value) {
+        return 0;
+      }
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+    };
+    return parseDate(b.sentDate) - parseDate(a.sentDate);
+  });
+
+const calculateDashboardKpis = (jobs: JobRecord[]) => {
+  const activeJobs = jobs.filter(job => job.status !== 'delivered').length;
+  const itemsInTransit = jobs.reduce((sum, job) => sum + (job.inTransit || 0), 0);
+  const exceptions = jobs.reduce((sum, job) => sum + (job.exceptions || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const deliveredTodayTotal = jobs.reduce((sum, job) => {
+    if (job.sentDate === today && job.delivered) {
+      return sum + job.delivered;
+    }
+    return sum;
+  }, 0);
+
+  let recentDelivered = 0;
+  if (!deliveredTodayTotal) {
+    const deliveredJobs = jobs
+      .filter(job => job.status === 'delivered' && job.delivered)
+      .sort((a, b) => {
+        const parse = (value?: string | null) => {
+          if (!value) return 0;
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+        };
+        return parse(b.sentDate) - parse(a.sentDate);
+      });
+    if (deliveredJobs.length > 0) {
+      recentDelivered = deliveredJobs[0].delivered || 0;
+    }
+  }
+
+  return {
+    activeJobs,
+    itemsInTransit,
+    deliveredToday: deliveredTodayTotal || recentDelivered,
+    exceptions
+  };
+};
+
+const loadStoredJobs = (): JobRecord[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(TRACK_JOBS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(isValidJobRecord) as JobRecord[];
+  } catch (error) {
+    console.warn('Failed to load stored job history', error);
+    return [];
+  }
+};
+
+const persistJobsToStorage = (jobs: JobRecord[]) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(TRACK_JOBS_STORAGE_KEY, JSON.stringify(jobs));
+  } catch (error) {
+    console.warn('Failed to persist job history', error);
+  }
+};
+
+const formatTimelineTimestamp = (date: Date) => {
+  const iso = date.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+};
+
+const addHours = (date: Date, hours: number) => {
+  const clone = new Date(date.getTime());
+  clone.setHours(clone.getHours() + hours);
+  return clone;
+};
+
+const buildTimelineForJob = (sentOn: Date): TrackingEventRecord[] => {
+  return [
+    {
+      timestamp: formatTimelineTimestamp(addHours(sentOn, -4)),
+      event: 'Label Created',
+      location: 'Outbound Processing Facility'
+    },
+    {
+      timestamp: formatTimelineTimestamp(addHours(sentOn, -2)),
+      event: 'Picked Up',
+      location: 'Outbound Processing Facility'
+    },
+    {
+      timestamp: formatTimelineTimestamp(sentOn),
+      event: 'In Transit',
+      location: 'Regional Sorting Center'
+    },
+    {
+      timestamp: formatTimelineTimestamp(addHours(sentOn, 18)),
+      event: 'Out for Delivery',
+      location: 'Destination Post Office'
+    }
+  ];
 };
 
 type ParticipantRecord = {
@@ -1191,6 +1352,7 @@ type MailGroupRecord = {
   trackingNumber?: string | null;
   deliveredDate?: string | null;
   exceptionReason?: string;
+  jobId?: string | null;
   // Legacy fields kept for backwards compatibility during refactor
   senderEnterpriseId?: string | null;
   senderContact?: string;
@@ -1217,6 +1379,31 @@ const getDocumentLabel = (document: DocumentRecord) => document.displayName || d
 
 const getDocumentReference = (document: DocumentRecord) =>
   document.referenceKey || document.fileName || document.name;
+
+const serializeDocumentForStorage = (document: DocumentRecord) => {
+  const serialized = { ...document };
+  if (serialized.cacheKey) {
+    if (getCachedPdf(serialized.cacheKey)) {
+      serialized.fileUrl = undefined;
+    }
+  } else if (serialized.fileUrl && serialized.fileUrl.startsWith('blob:')) {
+    serialized.fileUrl = undefined;
+  }
+  return serialized;
+};
+
+const reviveDocumentFromStorage = (document: DocumentRecord): DocumentRecord => {
+  const revived = { ...document };
+  if (revived.cacheKey) {
+    const cached = getCachedPdf(revived.cacheKey);
+    if (cached) {
+      revived.fileUrl = cached;
+    }
+  } else if (revived.fileUrl?.startsWith('data:')) {
+    hydratePdfCache(revived.cacheKey || revived.id, revived.fileUrl);
+  }
+  return revived;
+};
 
 const normalizeStructuredAddress = (
   input?: Partial<StructuredAddress> | null,
@@ -1630,7 +1817,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
   };
 
   const isActiveView = (view: MailView) => activeView === view;
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [showQuickMail, setShowQuickMail] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<DocumentRecord[]>([]);
   const [addressExceptions, setAddressExceptions] = useState([]);
@@ -1652,13 +1839,13 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<string | null>(null);
   const mailGroupSearchInputRef = useRef<HTMLInputElement | null>(null);
   const mailTaskGroups = useMemo(
-    () => mailGroups.filter(group => (group.documents?.length || 0) > 0),
+    () => mailGroups.filter(group => !group.jobId && (group.documents?.length || 0) > 0),
     [mailGroups]
   );
   const recipients = mailGroups;
   const setRecipients = setMailGroups;
-  const [sampleJobs, setSampleJobs] = useState([]);
-  const [trackingEvents, setTrackingEvents] = useState([]);
+  const [sampleJobs, setSampleJobs] = useState<JobRecord[]>([]);
+  const [trackingEvents, setTrackingEvents] = useState<TrackingEventRecord[]>([]);
   const [kpis, setKpis] = useState({
     activeJobs: 0,
     itemsInTransit: 0,
@@ -1673,7 +1860,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     status: 'all',
     date: ''
   });
-  const [archiveResults, setArchiveResults] = useState([]);
+  const [archiveResults, setArchiveResults] = useState<JobRecord[]>([]);
   const [reportModal, setReportModal] = useState(null);
 
   const enterpriseNamesById = useMemo(() => {
@@ -1752,6 +1939,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
             const recipientOrgId = group.recipient?.organizationId || group.organizationId || null;
             return {
               ...group,
+              documents: docs.map(doc => reviveDocumentFromStorage(doc as DocumentRecord)),
               taskId: docs.length > 0 ? group.taskId || buildTaskId(senderOrgId, recipientOrgId) : ''
             };
           });
@@ -1783,16 +1971,24 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     try {
       const persistable = mailGroups.map(group => ({
         ...group,
-        documents: (group.documents || []).map(doc => ({
-          ...doc,
-          fileUrl: doc.fileUrl && doc.fileUrl.startsWith('blob:') ? undefined : doc.fileUrl
-        }))
+        documents: (group.documents || []).map(doc => serializeDocumentForStorage(doc as DocumentRecord))
       }));
       window.sessionStorage.setItem(WIZARD_GROUPS_STORAGE_KEY, JSON.stringify(persistable));
     } catch (error) {
       console.warn('Failed to persist wizard mail groups', error);
     }
   }, [isWizardHydrated, mailGroups]);
+
+  useEffect(() => {
+    if (isLoadingData) {
+      return;
+    }
+    persistJobsToStorage(sampleJobs);
+  }, [isLoadingData, sampleJobs]);
+
+  useEffect(() => {
+    setKpis(calculateDashboardKpis(sampleJobs));
+  }, [sampleJobs]);
 
   const recipientStats = useMemo(() => {
     const total = mailTaskGroups.length;
@@ -2004,24 +2200,170 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
             pages: file.pages,
             size: file.size,
             fileName,
-            referenceKey: fileName || displayName,
-            fileUrl,
-            source: 'seed'
+          referenceKey: fileName || displayName,
+          fileUrl,
+          source: 'seed'
+        };
+        });
+        const uploadedLookup = new Map<string, DocumentRecord>();
+        uploaded.forEach(file => {
+          const keys = [file.id, file.fileName, file.name, file.displayName, file.referenceKey].filter(Boolean);
+          keys.forEach(key => {
+            uploadedLookup.set(String(key), file);
+          });
+        });
+        const buildParticipantFromSeed = (
+          participant: any,
+          fallback: Partial<ParticipantRecord> = {}
+        ): ParticipantRecord => {
+          const rawAddress = participant?.address || fallback.address || null;
+          return {
+            enterpriseId: participant?.enterpriseId ?? fallback.enterpriseId ?? null,
+            organizationId: participant?.organizationId ?? fallback.organizationId ?? null,
+            organizationName: participant?.organizationName ?? fallback.organizationName ?? '',
+            contactName: participant?.contactName ?? fallback.contactName ?? '',
+            email: participant?.email ?? fallback.email ?? '',
+            phone: participant?.phone ?? fallback.phone ?? '',
+            addressId: participant?.addressId ?? participant?.address?.id ?? fallback.addressId ?? null,
+            address: rawAddress ? normalizeStructuredAddress(rawAddress) : null
+          };
+        };
+        const recipientRecords: MailGroupRecord[] = (payload.recipients || []).map((entry: any, index: number) => {
+          const groupId = entry.id || `REC-${index}`;
+          const createDocumentFromSeed = (doc: any, docIndex: number): DocumentRecord | null => {
+            if (!doc) {
+              return null;
+            }
+            const baseId = doc.id || `${groupId}-DOC-${docIndex}`;
+            if (typeof doc === 'string') {
+              const matched = uploadedLookup.get(doc);
+              if (matched) {
+                return reviveDocumentFromStorage({
+                  ...matched,
+                  id: baseId,
+                  source: 'seed'
+                });
+              }
+              return reviveDocumentFromStorage({
+                id: baseId,
+                name: doc,
+                displayName: doc,
+                fileName: doc,
+                referenceKey: doc,
+                source: 'seed'
+              } as DocumentRecord);
+            }
+            const referenceKey = doc.referenceKey || doc.fileName || doc.name;
+            const matched = referenceKey ? uploadedLookup.get(referenceKey) : undefined;
+            const fileName = doc.fileName || matched?.fileName || referenceKey;
+            const displayName =
+              doc.displayName ||
+              doc.name ||
+              matched?.displayName ||
+              fileName ||
+              `Document ${docIndex + 1}`;
+            const fileUrl =
+              doc.fileUrl ||
+              (fileName ? `/api/pdfs/${encodeURIComponent(fileName)}` : matched?.fileUrl);
+            return reviveDocumentFromStorage({
+              id: baseId,
+              name: displayName,
+              displayName,
+              pages: doc.pages || matched?.pages,
+              size: doc.size || matched?.size,
+              fileName,
+              referenceKey: referenceKey || displayName,
+              fileUrl,
+              source: 'seed',
+              cacheKey: doc.cacheKey
+            } as DocumentRecord);
+          };
+
+          const senderDefaults: Partial<ParticipantRecord> = {
+            enterpriseId: entry.senderEnterpriseId || null,
+            organizationId: entry.senderOrganizationId || null,
+            organizationName: entry.senderName || '',
+            contactName: entry.senderContact || '',
+            email: entry.senderEmail || '',
+            phone: entry.senderPhone || '',
+            addressId: entry.senderAddress?.id || entry.senderAddressId || null,
+            address: entry.senderAddress ? normalizeStructuredAddress(entry.senderAddress) : null
+          };
+          const recipientDefaults: Partial<ParticipantRecord> = {
+            enterpriseId: entry.recipientEnterpriseId || null,
+            organizationId: entry.recipientOrganizationId || entry.organizationId || null,
+            organizationName: entry.recipientOrganizationName || entry.recipientName || entry.name || '',
+            contactName: entry.recipientContact || entry.recipientName || entry.name || '',
+            email: entry.email || '',
+            phone: entry.phone || '',
+            addressId: entry.recipientAddress?.id || entry.recipientAddressId || null,
+            address: entry.recipientAddress ? normalizeStructuredAddress(entry.recipientAddress) : null
+          };
+
+          const senderParticipant = buildParticipantFromSeed(entry.sender, senderDefaults);
+          const recipientParticipant = buildParticipantFromSeed(entry.recipient, recipientDefaults);
+
+          const documents = (entry.documents || [])
+            .map((doc: any, docIndex: number) => createDocumentFromSeed(doc, docIndex))
+            .filter(Boolean) as DocumentRecord[];
+
+          return {
+            id: groupId,
+            taskId: entry.taskId || '',
+            name: entry.name || entry.recipientName || '',
+            recipientName: entry.recipientName || entry.name || '',
+            status: entry.status || 'in-transit',
+            deliveryType: entry.deliveryType || 'Certified Mail',
+            documents,
+            mailOptions: normalizeMailOptions(entry.mailOptions),
+            sender: senderParticipant,
+            recipient: recipientParticipant,
+            trackingNumber: entry.trackingNumber || null,
+            deliveredDate: entry.deliveredDate || null,
+            exceptionReason: entry.exceptionReason,
+            jobId: entry.jobId || null,
+            senderEnterpriseId: entry.senderEnterpriseId || senderParticipant.enterpriseId || null,
+            senderContact: entry.senderContact || senderParticipant.contactName || '',
+            senderEmail: entry.senderEmail || senderParticipant.email || '',
+            senderPhone: entry.senderPhone || senderParticipant.phone || '',
+            senderAddress:
+              entry.senderAddress ||
+              (senderParticipant.address ? formatStructuredAddress(senderParticipant.address) : ''),
+            organizationId: entry.organizationId || recipientParticipant.organizationId || null,
+            address:
+              entry.address ||
+              (recipientParticipant.address ? formatStructuredAddress(recipientParticipant.address) : ''),
+            email: entry.email || recipientParticipant.email || '',
+            phone: entry.phone || recipientParticipant.phone || '',
+            notes: entry.notes || '',
+            sendMode: entry.sendMode || 'grouped'
           };
         });
+
         setEnterprises(enterprisesData);
         setOrganizations(organizationsData);
         setExistingRecipients(payload.existingRecipients || []);
         setUploadedFiles(uploaded);
-        setSampleJobs(payload.jobs || []);
+        if (recipientRecords.length) {
+          setMailGroups(prev => {
+            if (!prev.length) {
+              return recipientRecords;
+            }
+            const existingIds = new Set(prev.map(group => group.id));
+            const additions = recipientRecords.filter(group => !existingIds.has(group.id));
+            if (!additions.length) {
+              return prev;
+            }
+            return [...prev, ...additions];
+          });
+        }
+        const seedJobs: JobRecord[] = payload.jobs || [];
+        const storedJobs = loadStoredJobs();
+        const mergedJobs = mergeJobsById(seedJobs, storedJobs);
+        const sortedJobs = sortJobsByDate(mergedJobs);
+        setSampleJobs(sortedJobs);
         setTrackingEvents(payload.trackingEvents || []);
-        setKpis(payload.kpis || {
-          activeJobs: 0,
-          itemsInTransit: 0,
-          deliveredToday: 0,
-          exceptions: 0
-        });
-        setArchiveResults(payload.jobs || []);
+        setArchiveResults(sortedJobs);
         setDataError(null);
       } catch (error) {
         console.error('Failed to load data', error);
@@ -2034,12 +2376,6 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         setSampleJobs([]);
         setTrackingEvents([]);
         setArchiveResults([]);
-        setKpis({
-          activeJobs: 0,
-          itemsInTransit: 0,
-          deliveredToday: 0,
-          exceptions: 0
-        });
       } finally {
         setIsLoadingData(false);
       }
@@ -2049,7 +2385,8 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
   }, []);
 
   useEffect(() => {
-    const allDocs = mailGroups.flatMap(group =>
+    const activeDraftGroups = mailGroups.filter(group => !group.jobId);
+    const allDocs = activeDraftGroups.flatMap(group =>
       (group.documents || [])
         .map(doc => getDocumentReference(doc))
         .filter((ref): ref is string => Boolean(ref))
@@ -2058,7 +2395,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     setJobData(prev => ({
       ...prev,
       documents: uniqueDocs,
-      recipients: mailGroups
+      recipients: activeDraftGroups
     }));
   }, [mailGroups]);
 
@@ -2134,6 +2471,9 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const hasQuery = query.length > 0;
 
     return mailGroups.filter(group => {
+      if (group.jobId) {
+        return false;
+      }
       const senderEnterpriseId = group.sender?.enterpriseId || group.senderEnterpriseId || null;
       const recipientEnterpriseId = group.recipient?.enterpriseId || null;
       const candidateStrings: string[] = [
@@ -2208,7 +2548,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     mailGroupClientFilter !== 'all' ||
     mailGroupOrganizationFilter !== 'all';
 
-  const totalMailGroupCount = mailGroups.length;
+  const totalMailGroupCount = mailGroups.filter(group => !group.jobId).length;
   const displayedMailGroupCount = filteredMailGroups.length;
 
   const clearMailGroupFilters = () => {
@@ -2298,6 +2638,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         status: 'pending',
         trackingNumber: null,
         deliveredDate: null,
+        jobId: null,
         sender: {
           enterpriseId: defaultEnterpriseId,
           organizationId: senderOrg?.id || null,
@@ -2323,61 +2664,164 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     [organizations, enterprises]
   );
 
-  const buildDocumentFromFile = (file: File, index: number): DocumentRecord => {
-    const objectUrl =
-      typeof window !== 'undefined' ? URL.createObjectURL(file) : undefined;
+  const buildDocumentFromFile = async (file: File, index: number): Promise<DocumentRecord> => {
+    const baseId = `${file.name}-${Date.now()}-${index}`;
+    const cacheKey = `${baseId}-${file.lastModified}`;
+    let fileUrl: string | undefined;
+
+    if (typeof window !== 'undefined') {
+      try {
+        fileUrl = await storePdfInCache(cacheKey, file);
+      } catch (error) {
+        console.warn('Failed to cache uploaded PDF, falling back to object URL', error);
+        fileUrl = URL.createObjectURL(file);
+      }
+    }
+
     return {
-      id: `${file.name}-${Date.now()}-${index}`,
+      id: baseId,
       name: file.name,
       displayName: file.name,
       pages: Math.floor(Math.random() * 200) + 50,
       size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
       fileName: file.name,
-      fileUrl: objectUrl,
+      fileUrl,
       referenceKey: file.name,
-      source: 'upload'
+      source: 'upload',
+      cacheKey
     };
   };
 
-  const handleGroupFileUpload = (groupId, files?: FileList | File[]) => {
+  const handleGroupFileUpload = async (groupId, files?: FileList | File[]) => {
     if (!files || files.length === 0) {
       return;
     }
-    const fileArray = Array.from(files instanceof FileList ? files : files);
-    const newDocs = fileArray.map((file, index) => buildDocumentFromFile(file, index));
-    mutateMailGroup(groupId, (group) => {
-      const existingDocs = group.documents || [];
-      const nextDocuments = [...existingDocs, ...newDocs];
-      const senderOrgId = group.sender?.organizationId || null;
-      const recipientOrgId = group.recipient?.organizationId || group.organizationId || null;
-      const nextTaskId =
-        nextDocuments.length > 0
-          ? group.taskId || buildTaskId(senderOrgId, recipientOrgId)
-          : '';
+    try {
+      const fileArray = Array.from(files instanceof FileList ? files : files);
+      const newDocs = await Promise.all(
+        fileArray.map((file, index) => buildDocumentFromFile(file, index))
+      );
+      mutateMailGroup(groupId, (group) => {
+        const existingDocs = group.documents || [];
+        const nextDocuments = [...existingDocs, ...newDocs];
+        const senderOrgId = group.sender?.organizationId || null;
+        const recipientOrgId = group.recipient?.organizationId || group.organizationId || null;
+        const nextTaskId =
+          nextDocuments.length > 0
+            ? group.taskId || buildTaskId(senderOrgId, recipientOrgId)
+            : '';
+        return {
+          ...group,
+          taskId: nextTaskId,
+          documents: nextDocuments
+        };
+      });
+      setUploadedFiles(prev => {
+        const existingRefs = new Set(
+          prev.map(file => file.referenceKey || file.fileName || file.name)
+        );
+        const additions = newDocs.filter(doc => {
+          const ref = doc.referenceKey || doc.fileName || doc.name;
+          return ref ? !existingRefs.has(ref) : true;
+        });
+        if (!additions.length) {
+          return prev;
+        }
+        return [...prev, ...additions];
+      });
+    } catch (error) {
+      console.error('Failed to process uploaded PDF files', error);
+    }
+  };
+
+  const finalizeAndDispatchJob = () => {
+    if (mailTaskGroups.length === 0) {
+      alert('No mail tasks ready to dispatch. Add documents before completing the job.');
+      return;
+    }
+    const now = new Date();
+    const uniqueSuffix = now.getTime().toString(36).toUpperCase();
+    const nameSegment = (jobData.jobName || 'JOB')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 6)
+      .toUpperCase() || 'JOB';
+    const jobId = `JOB-${nameSegment}-${uniqueSuffix}`;
+
+    const dispatchedGroups = mailGroups.map((group, index) => {
+      if (!group.documents || group.documents.length === 0) {
+        return group;
+      }
+      const trackingNumber =
+        group.trackingNumber || `TRK-${uniqueSuffix}-${String(index + 1).padStart(4, '0')}`;
       return {
         ...group,
-        taskId: nextTaskId,
-        documents: nextDocuments
+        status: 'in-transit',
+        trackingNumber,
+        deliveredDate: null,
+        jobId
       };
     });
-    setUploadedFiles(prev => {
-      const existingRefs = new Set(
-        prev.map(file => file.referenceKey || file.fileName || file.name)
-      );
-      const additions = newDocs.filter(doc => {
-        const ref = doc.referenceKey || doc.fileName || doc.name;
-        return ref ? !existingRefs.has(ref) : true;
-      });
-      if (!additions.length) {
-        return prev;
-      }
-      return [...prev, ...additions];
+
+    setMailGroups(dispatchedGroups);
+
+    const formattedSentDate = now.toISOString().slice(0, 10);
+    const newJob: JobRecord = {
+      id: jobId,
+      name: jobData.jobName || `Mail Job ${formattedSentDate}`,
+      status: 'in-transit',
+      sentDate: formattedSentDate,
+      items: mailTaskGroups.length,
+      delivered: 0,
+      inTransit: mailTaskGroups.length,
+      exceptions: addressExceptions.length,
+      priority: jobData.priority
+    };
+
+    const mergedJobs = mergeJobsById(sampleJobs, [newJob]);
+    const nextJobs = sortJobsByDate(mergedJobs);
+    setSampleJobs(nextJobs);
+    setArchiveResults(nextJobs);
+    setTrackingEvents(buildTimelineForJob(now));
+    setSelectedJob(newJob);
+
+    alert('Mail job dispatched successfully!');
+    setJobData({
+      jobName: '',
+      dueDate: '',
+      priority: 'standard',
+      notes: '',
+      senderOrganizationIds: [],
+      recipientOrganizationIds: [],
+      documents: [],
+      recipients: []
     });
+    setMailGroupSearch('');
+    setMailGroupSearchInput('');
+    setMailGroupClientFilter('all');
+    setMailGroupOrganizationFilter('all');
+    setSelectedPreviewGroupId(null);
+    setSelectedPreviewDocumentId(null);
+    setValidationProgress(0);
+    setIsValidating(false);
+    setAddressExceptions([]);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(WIZARD_JOB_STORAGE_KEY);
+      window.sessionStorage.removeItem(WIZARD_GROUPS_STORAGE_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_STORAGE_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_ENTERPRISES_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_ORGS_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_DOCUMENTS_KEY);
+    }
+    navigateTo('tracking');
+    setWizardStep(1);
   };
 
   const handleRemoveGroupDocument = (groupId, documentId) => {
     const targetGroup = mailGroups.find(group => group.id === groupId);
     const targetDoc = targetGroup?.documents?.find(doc => doc.id === documentId);
+    if (targetDoc?.cacheKey) {
+      removePdfFromCache(targetDoc.cacheKey);
+    }
     if (
       typeof window !== 'undefined' &&
       targetDoc?.fileUrl &&
@@ -2407,11 +2851,13 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const recipientIds = jobData.recipientOrganizationIds;
 
     if (!senderIds.length || !recipientIds.length) {
-      setMailGroups(prev => (prev.length ? [] : prev));
+      setMailGroups(prev => prev.filter(group => group.jobId));
       return;
     }
 
     setMailGroups(prev => {
+      const dispatchedGroups = prev.filter(group => group.jobId);
+      const workingGroups = prev.filter(group => !group.jobId);
       const combos: Array<{ senderId: string; recipientId: string }> = [];
       senderIds.forEach(senderId => {
         recipientIds.forEach(recipientId => {
@@ -2420,7 +2866,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
       });
 
       const existingMap = new Map<string, MailGroupRecord>();
-      prev.forEach(group => {
+      workingGroups.forEach(group => {
         const key = buildGroupKey(group.sender?.organizationId || null, group.recipient?.organizationId || null);
         if (!existingMap.has(key)) {
           existingMap.set(key, group);
@@ -2436,7 +2882,49 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         return createMailGroupDraft(senderId, recipientId);
       });
 
-      return nextGroups;
+      const existingIds = new Set(dispatchedGroups.map(group => group.id));
+      const existingTaskIds = new Set(
+        dispatchedGroups
+          .map(group => group.taskId)
+          .filter((value): value is string => Boolean(value))
+      );
+
+      const ensureUniqueValue = (candidate: string, existing: Set<string>, fallbackPrefix: string) => {
+        let base = candidate && !/^\s*$/.test(candidate) ? candidate : `${fallbackPrefix}-${existing.size + 1}`;
+        if (!existing.has(base)) {
+          existing.add(base);
+          return base;
+        }
+        let counter = 1;
+        let next = `${base}-${counter}`;
+        while (existing.has(next)) {
+          counter += 1;
+          next = `${base}-${counter}`;
+        }
+        existing.add(next);
+        return next;
+      };
+
+      const normalizedNextGroups = nextGroups.map(group => {
+        const id = ensureUniqueValue(group.id, existingIds, 'MAIL');
+        const hasDocuments = (group.documents || []).length > 0;
+        const proposedTaskId = group.taskId || (hasDocuments
+          ? buildTaskId(
+              group.sender?.organizationId || null,
+              group.recipient?.organizationId || group.organizationId || null
+            )
+          : '');
+        const taskId = hasDocuments && proposedTaskId
+          ? ensureUniqueValue(proposedTaskId, existingTaskIds, 'TASK')
+          : '';
+        return {
+          ...group,
+          id,
+          taskId
+        };
+      });
+
+      return [...dispatchedGroups, ...normalizedNextGroups];
     });
   }, [isWizardHydrated, activeView, jobData.senderOrganizationIds, jobData.recipientOrganizationIds, organizations, createMailGroupDraft]);
 
@@ -2569,7 +3057,9 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         );
         window.sessionStorage.setItem(
           MAIL_DETAILS_DOCUMENTS_KEY,
-          JSON.stringify(groupToPersist.documents || [])
+          JSON.stringify(
+            (groupToPersist.documents || []).map(doc => serializeDocumentForStorage(doc as DocumentRecord))
+          )
         );
       }
     } catch (error) {
@@ -4732,9 +5222,23 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                                         {previewDocs.map((doc) => {
                                           const label = getDocumentLabel(doc);
                                           return (
-                                            <span key={doc.id} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
-                                              <FileText className="w-3 h-3 mr-1" />
+                                            <span
+                                              key={doc.id}
+                                              className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                                            >
+                                              <FileText className="w-3 h-3" />
                                               {label.length > 20 ? `${label.slice(0, 17)}...` : label}
+                                              <button
+                                                type="button"
+                                                aria-label="Remove document from mail"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  handleRemoveGroupDocument(group.id, doc.id);
+                                                }}
+                                                className="inline-flex items-center justify-center rounded-full border border-transparent p-0.5 text-red-600 hover:text-red-800"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
                                             </span>
                                           );
                                         })}
@@ -4930,24 +5434,39 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                                   const label = getDocumentLabel(doc);
                                   const isActive = doc.id === selectedPreviewDocumentId;
                                   return (
-                                    <button
+                                    <div
                                       key={doc.id}
-                                      type="button"
-                                      onClick={() => setSelectedPreviewDocumentId(doc.id)}
-                                      className={`w-full flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
                                         isActive
                                           ? 'border-blue-500 bg-blue-50 text-blue-700'
                                           : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                                       }`}
                                     >
-                                      <span className="flex items-center gap-2">
-                                        <FileText className="w-4 h-4" />
-                                        {label}
-                                      </span>
-                                      <span className="text-xs text-gray-500">
-                                        {doc.pages ? `${doc.pages}p` : ''}
-                                      </span>
-                                    </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPreviewDocumentId(doc.id)}
+                                        className="flex flex-1 items-center justify-between text-left"
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <FileText className="w-4 h-4" />
+                                          {label}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {doc.pages ? `${doc.pages}p` : ''}
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label="Remove document"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleRemoveGroupDocument(selectedPreviewGroup.id, doc.id);
+                                        }}
+                                        className="ml-2 inline-flex items-center justify-center rounded-full border border-transparent p-1 text-red-600 hover:text-red-800"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
                                   );
                                 })}
                               </div>
@@ -5135,9 +5654,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 return;
               }
               if (wizardStep === steps.length) {
-                alert('Mail job dispatched successfully!');
-                navigateTo('dashboard');
-                navigateToStep(1);
+                finalizeAndDispatchJob();
+                return;
               }
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -5151,6 +5669,15 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
 
   const TrackingView = () => {
     const [expandedRow, setExpandedRow] = useState(null);
+    const jobRecipients = useMemo(() => {
+      if (selectedJob) {
+        const matches = recipients.filter(recipient => recipient.jobId === selectedJob.id);
+        if (matches.length > 0) {
+          return matches;
+        }
+      }
+      return recipients.filter(recipient => (recipient.documents?.length || 0) > 0);
+    }, [recipients, selectedJob]);
     
     return (
       <div className="p-6">
@@ -5172,9 +5699,9 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
             <div className="flex space-x-2">
               <button 
                 onClick={() => {
-                  if (!selectedJob) return;
+                  if (!selectedJob || jobRecipients.length === 0) return;
                   const csvContent = `Job ID,Job Name,Recipient,Address,Tracking Number,Status,Delivery Date\n` +
-                    recipients.map(r => 
+                    jobRecipients.map(r => 
                       `${selectedJob.id},${selectedJob.name},"${r.name}","${r.address}",${r.trackingNumber || 'N/A'},${r.status},${r.deliveredDate || 'Pending'}`
                     ).join('\n');
                   
@@ -5186,8 +5713,8 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                   a.click();
                   window.URL.revokeObjectURL(url);
                 }}
-                disabled={!selectedJob}
-                className={`px-4 py-2 border border-gray-300 rounded-md flex items-center ${selectedJob ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 cursor-not-allowed'}`}
+                disabled={!selectedJob || jobRecipients.length === 0}
+                className={`px-4 py-2 border border-gray-300 rounded-md flex items-center ${selectedJob && jobRecipients.length > 0 ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 cursor-not-allowed'}`}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export Report
@@ -5289,7 +5816,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {recipients.map((recipient) => (
+                {jobRecipients.map((recipient) => (
                   <React.Fragment key={recipient.id}>
                     <tr className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
