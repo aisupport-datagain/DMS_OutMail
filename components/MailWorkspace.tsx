@@ -3417,14 +3417,6 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     return null;
   };
 
-  const trackingEventOrder = useMemo(() => {
-    const order = new Map<string, number>();
-    trackingEvents.forEach((event, index) => {
-      order.set(event.event.toLowerCase(), index);
-    });
-    return order;
-  }, [trackingEvents]);
-
   const getTrackingTimelineForRecipient = useCallback(
     (recipient: MailGroupRecord) => {
       if (!recipient) {
@@ -3454,11 +3446,25 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
         targetEventName = recipient.deliveredDate ? 'Delivered' : 'In Transit';
       }
 
-      const normalizedEvent = targetEventName.toLowerCase();
-      let limitIndex = trackingEventOrder.get(normalizedEvent);
+      const findIndexForEvent = (name: string) =>
+        trackingEvents.findIndex(event => event.event.toLowerCase() === name);
 
-      if (typeof limitIndex !== 'number') {
-        limitIndex = trackingEventOrder.get('in transit') ?? trackingEvents.length - 1;
+      const normalizedEvent = targetEventName.toLowerCase();
+      let limitIndex = findIndexForEvent(normalizedEvent);
+
+      if (limitIndex < 0) {
+        const fallbackTargets = ['in transit', 'picked up', 'label created'];
+        for (const fallback of fallbackTargets) {
+          const idx = findIndexForEvent(fallback);
+          if (idx >= 0) {
+            limitIndex = idx;
+            break;
+          }
+        }
+      }
+
+      if (limitIndex < 0 && normalizedEvent === 'delivered') {
+        limitIndex = trackingEvents.length - 1;
       }
 
       if (limitIndex < 0) {
@@ -3467,7 +3473,7 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
 
       return trackingEvents.slice(0, limitIndex + 1);
     },
-    [trackingEventOrder, trackingEvents]
+    [trackingEvents]
   );
 
   const getStatusBadge = (status) => {
