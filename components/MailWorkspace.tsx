@@ -4009,233 +4009,496 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
   };
 
   
+  type QuickMailFormData = {
+    senderOrganizationId: string | null;
+    senderOrganizationName: string;
+    senderAddressId: string | null;
+    senderAddress: StructuredAddress | null;
+    senderAddressText: string;
+    recipientOrganizationId: string | null;
+    recipientOrganizationName: string;
+    recipientAddressId: string | null;
+    recipientAddress: StructuredAddress | null;
+    recipientAddressText: string;
+    email: string;
+    phone: string;
+    documents: DocumentRecord[];
+    deliveryType: string;
+    notes: string;
+  };
+
   const QuickMailModal = ({ onClose, onSend }) => {
-    const [quickMailData, setQuickMailData] = useState({
-      recipientName: '',
-      organizationId: '',
-      address: '',
+    const initialForm: QuickMailFormData = {
+      senderOrganizationId: null,
+      senderOrganizationName: '',
+      senderAddressId: null,
+      senderAddress: null,
+      senderAddressText: '',
+      recipientOrganizationId: null,
+      recipientOrganizationName: '',
+      recipientAddressId: null,
+      recipientAddress: null,
+      recipientAddressText: '',
       email: '',
       phone: '',
       documents: [],
       deliveryType: 'Certified Mail',
       notes: ''
-    });
-    const [uploadedDoc, setUploadedDoc] = useState(null);
-    const [searchRecipient, setSearchRecipient] = useState('');
+    };
+
+    const [formData, setFormData] = useState<QuickMailFormData>(initialForm);
+    const [senderQuery, setSenderQuery] = useState('');
+    const [recipientQuery, setRecipientQuery] = useState('');
+    const [showSenderDropdown, setShowSenderDropdown] = useState(false);
     const [showRecipientDropdown, setShowRecipientDropdown] = useState(false);
-    const [selectedOrg, setSelectedOrg] = useState(null);
-    
-    const handleRecipientSelect = (recipient) => {
-      const org = organizations.find(o => o.name === recipient.organization);
-      if (org) {
-        setSelectedOrg(org);
-        const defaultAddr = org.addresses.find(a => a.default);
-        setQuickMailData({
-          ...quickMailData,
-          recipientName: recipient.name,
-          organizationId: org.id,
-          address: defaultAddr ? formatStructuredAddress(defaultAddr) : '',
-          email: recipient.email
-        });
-      }
-      setSearchRecipient(recipient.name);
-      setShowRecipientDropdown(false);
+    const [selectedSenderOrg, setSelectedSenderOrg] = useState<OrganizationRecord | null>(null);
+    const [selectedRecipientOrg, setSelectedRecipientOrg] = useState<OrganizationRecord | null>(null);
+
+    const filteredSenderOrganizations = useMemo(
+      () =>
+        organizations.filter(org =>
+          org.name.toLowerCase().includes(senderQuery.trim().toLowerCase())
+        ),
+      [organizations, senderQuery]
+    );
+
+    const filteredRecipientOrganizations = useMemo(
+      () =>
+        organizations.filter(org =>
+          org.name.toLowerCase().includes(recipientQuery.trim().toLowerCase())
+        ),
+      [organizations, recipientQuery]
+    );
+
+    const buildDocumentRecord = (file: File, index: number): DocumentRecord => {
+      const now = Date.now();
+      const pages = Math.floor(Math.random() * 80) + 12;
+      const sizeInMb = file.size / (1024 * 1024);
+      const sizeLabel =
+        sizeInMb >= 1
+          ? `${sizeInMb.toFixed(1)} MB`
+          : `${Math.max(Math.round(file.size / 1024), 1)} KB`;
+      return {
+        id: `QUICK-${now}-${index}`,
+        name: file.name,
+        displayName: file.name,
+        pages,
+        size: sizeLabel,
+        fileName: file.name,
+        referenceKey: file.name,
+        source: 'upload'
+      };
     };
-    
+
+    const handleOrganizationSelect = (role: 'sender' | 'recipient', organization: OrganizationRecord) => {
+      const primaryAddress = getPrimaryOrganizationAddress(organization);
+      const structured = primaryAddress ? normalizeStructuredAddress(primaryAddress) : null;
+      const formatted = structured ? formatStructuredAddress(structured) : '';
+
+      if (role === 'sender') {
+        setSelectedSenderOrg(organization);
+        setSenderQuery(organization.name);
+        setShowSenderDropdown(false);
+        setFormData(prev => ({
+          ...prev,
+          senderOrganizationId: organization.id,
+          senderOrganizationName: organization.name,
+          senderAddressId: structured?.id || null,
+          senderAddress: structured,
+          senderAddressText: formatted
+        }));
+      } else {
+        setSelectedRecipientOrg(organization);
+        setRecipientQuery(organization.name);
+        setShowRecipientDropdown(false);
+        setFormData(prev => ({
+          ...prev,
+          recipientOrganizationId: organization.id,
+          recipientOrganizationName: organization.name,
+          recipientAddressId: structured?.id || null,
+          recipientAddress: structured,
+          recipientAddressText: formatted
+        }));
+      }
+    };
+
+    const handleAddressSelect = (role: 'sender' | 'recipient', addressId: string) => {
+      const organization = role === 'sender' ? selectedSenderOrg : selectedRecipientOrg;
+      const address =
+        organization?.addresses.find(addr => (addr.id || addr.streetAddress) === addressId) || null;
+      const structured = address ? normalizeStructuredAddress(address) : null;
+      const formatted = structured ? formatStructuredAddress(structured) : '';
+
+      if (role === 'sender') {
+        setFormData(prev => ({
+          ...prev,
+          senderAddressId: address?.id || null,
+          senderAddress: structured,
+          senderAddressText: formatted
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          recipientAddressId: address?.id || null,
+          recipientAddress: structured,
+          recipientAddressText: formatted
+        }));
+      }
+    };
+
+    const updateAddressText = (role: 'sender' | 'recipient', value: string) => {
+      const structured = value ? normalizeStructuredAddress({ streetAddress: value }) : null;
+      if (role === 'sender') {
+        setFormData(prev => ({
+          ...prev,
+          senderAddressText: value,
+          senderAddress: structured,
+          senderAddressId: null
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          recipientAddressText: value,
+          recipientAddress: structured,
+          recipientAddressId: null
+        }));
+      }
+    };
+
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        const docPayload = {
-          id: `QUICK-${Date.now()}`,
-          name: file.name,
-          pages: Math.floor(Math.random() * 120) + 20,
-          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-        };
-        setUploadedDoc(docPayload);
-        setQuickMailData({
-          ...quickMailData,
-          documents: [docPayload]
-        });
-      }
-    };
-    
-    const handleSend = () => {
-      if (!quickMailData.recipientName || !quickMailData.address || !uploadedDoc) {
-        alert('Please fill in all required fields and upload a document');
+      const files = Array.from(event.target.files || []).filter(file => {
+        const lower = file.name.toLowerCase();
+        return file.type === 'application/pdf' || lower.endsWith('.pdf');
+      });
+
+      if (!files.length) {
+        event.target.value = '';
         return;
       }
-      
-      onSend(quickMailData);
+
+      const newDocs = files.map((file, index) => buildDocumentRecord(file, index));
+      setFormData(prev => ({
+        ...prev,
+        documents: [...prev.documents, ...newDocs]
+      }));
+      event.target.value = '';
+    };
+
+    const handleRemoveDocument = (documentId: string) => {
+      setFormData(prev => ({
+        ...prev,
+        documents: prev.documents.filter(doc => doc.id !== documentId)
+      }));
+    };
+
+    const handleSenderQueryChange = (value: string) => {
+      const matchesExisting = selectedSenderOrg?.name === value;
+      setSenderQuery(value);
+      setShowSenderDropdown(true);
+      if (!matchesExisting) {
+        setSelectedSenderOrg(null);
+      }
+      setFormData(prev => {
+        const shouldResetAddress = !matchesExisting && Boolean(prev.senderOrganizationId);
+        return {
+          ...prev,
+          senderOrganizationName: value,
+          senderOrganizationId: matchesExisting ? selectedSenderOrg?.id || null : null,
+          senderAddressId: matchesExisting ? prev.senderAddressId : shouldResetAddress ? null : prev.senderAddressId,
+          senderAddress: matchesExisting ? prev.senderAddress : shouldResetAddress ? null : prev.senderAddress,
+          senderAddressText: matchesExisting ? prev.senderAddressText : shouldResetAddress ? '' : prev.senderAddressText
+        };
+      });
+    };
+
+    const handleRecipientQueryChange = (value: string) => {
+      const matchesExisting = selectedRecipientOrg?.name === value;
+      setRecipientQuery(value);
+      setShowRecipientDropdown(true);
+      if (!matchesExisting) {
+        setSelectedRecipientOrg(null);
+      }
+      setFormData(prev => {
+        const shouldResetAddress = !matchesExisting && Boolean(prev.recipientOrganizationId);
+        return {
+          ...prev,
+          recipientOrganizationName: value,
+          recipientOrganizationId: matchesExisting ? selectedRecipientOrg?.id || null : null,
+          recipientAddressId: matchesExisting ? prev.recipientAddressId : shouldResetAddress ? null : prev.recipientAddressId,
+          recipientAddress: matchesExisting ? prev.recipientAddress : shouldResetAddress ? null : prev.recipientAddress,
+          recipientAddressText: matchesExisting ? prev.recipientAddressText : shouldResetAddress ? '' : prev.recipientAddressText
+        };
+      });
+    };
+
+    const handleSend = () => {
+      if (
+        !formData.senderOrganizationName.trim() ||
+        !formData.senderAddressText.trim() ||
+        !formData.recipientOrganizationName.trim() ||
+        !formData.recipientAddressText.trim() ||
+        formData.documents.length === 0
+      ) {
+        alert('Please provide sender, recipient, addresses, and at least one PDF.');
+        return;
+      }
+
+      onSend(formData);
       alert('Mail job created successfully and sent for processing!');
       onClose();
     };
-    
-    const filteredRecipients = existingRecipients.filter(r => 
-      r.name.toLowerCase().includes(searchRecipient.toLowerCase()) ||
-      r.organization.toLowerCase().includes(searchRecipient.toLowerCase())
-    );
-    
+
+    const senderSummary = formData.senderOrganizationName || 'Not specified';
+    const recipientSummary = formData.recipientOrganizationName || 'Not specified';
+    const documentSummary =
+      formData.documents.length === 0
+        ? 'No documents uploaded'
+        : `${formData.documents.length} document${formData.documents.length > 1 ? 's' : ''}`;
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
           <div className="flex justify-between items-start mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Quick Mail</h2>
-              <p className="text-sm text-gray-600 mt-1">Send a single document quickly</p>
+              <p className="text-sm text-gray-600 mt-1">
+                Send documents quickly with a single sender and recipient.
+              </p>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <X className="w-5 h-5" />
             </button>
           </div>
-          
-          <div className="space-y-4">
-            {/* Document Upload */}
+
+          <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Document *
+                Documents *
               </label>
-              {!uploadedDoc ? (
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <input
-                    type="file"
-                    id="quickFile"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                  <label
-                    htmlFor="quickFile"
-                    className="inline-block bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 cursor-pointer text-sm"
-                  >
-                    Select PDF
-                  </label>
-                  <p className="text-xs text-gray-500 mt-1">Upload the document to send</p>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                  <div className="flex items-center">
-                    <FileText className="w-5 h-5 text-gray-400 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{uploadedDoc.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {uploadedDoc.pages} pages • {uploadedDoc.size}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setUploadedDoc(null);
-                      setQuickMailData({...quickMailData, documents: []});
-                    }}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <input
+                  type="file"
+                  id="quickMailDocuments"
+                  accept=".pdf"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <label
+                  htmlFor="quickMailDocuments"
+                  className="inline-block bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 cursor-pointer text-sm"
+                >
+                  Select PDF
+                </label>
+                <p className="text-xs text-gray-500 mt-1">Upload one or more PDFs to include.</p>
+              </div>
+              {formData.documents.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {formData.documents.map(doc => {
+                    const hasPages = typeof doc.pages === 'number' && doc.pages > 0;
+                    const pagesLabel = hasPages ? `${doc.pages} pages` : 'Pages: Unknown';
+                    const sizeLabel = doc.size ? ` • ${doc.size}` : '';
+                    return (
+                      <li
+                        key={doc.id}
+                        className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-5 h-5 text-gray-400" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{doc.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {pagesLabel}
+                              {sizeLabel}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveDocument(doc.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
-            
-            {/* Recipient Search */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Recipient *
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchRecipient}
-                  onChange={(e) => {
-                    setSearchRecipient(e.target.value);
-                    setShowRecipientDropdown(true);
-                    setQuickMailData({...quickMailData, recipientName: e.target.value});
-                  }}
-                  onFocus={() => setShowRecipientDropdown(true)}
-                  placeholder="Search recipient or type new name..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
-                
-                {showRecipientDropdown && filteredRecipients.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                    {filteredRecipients.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => handleRecipientSelect(r)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100"
-                      >
-                        <div className="text-sm font-medium text-gray-900">{r.name}</div>
-                        <div className="text-xs text-gray-500">{r.organization} • {r.email}</div>
-                      </button>
-                    ))}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Sender</h3>
+                <div className="mt-3 space-y-3">
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Sender Organization *
+                    </label>
+                    <input
+                      type="text"
+                      value={senderQuery}
+                      placeholder="Search organization or type new name..."
+                      onChange={(event) => handleSenderQueryChange(event.target.value)}
+                      onFocus={() => setShowSenderDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowSenderDropdown(false), 120)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
+                    {showSenderDropdown && filteredSenderOrganizations.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
+                        {filteredSenderOrganizations.map(org => (
+                          <button
+                            key={org.id}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleOrganizationSelect('sender', org)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100"
+                          >
+                            <div className="text-sm font-medium text-gray-900">{org.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {describePrimaryAddress(org) || 'No saved address'}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {selectedSenderOrg && selectedSenderOrg.addresses.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Sender Address Book
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={formData.senderAddressId || ''}
+                        onChange={(event) => handleAddressSelect('sender', event.target.value)}
+                      >
+                        <option value="">Choose address...</option>
+                        {selectedSenderOrg.addresses.map(addr => (
+                          <option key={addr.id || addr.streetAddress} value={addr.id || addr.streetAddress}>
+                            {addr.label ? `${addr.label} - ` : ''}{formatStructuredAddress(addr)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {!selectedSenderOrg?.addresses?.length && selectedSenderOrg && (
+                    <p className="text-xs text-gray-500">
+                      No saved addresses for this organization. Enter the address manually below.
+                    </p>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Sender Address *
+                    </label>
+                    <textarea
+                      value={formData.senderAddressText}
+                      onChange={(event) => updateAddressText('sender', event.target.value)}
+                      rows={2}
+                      placeholder="123 Main St, Suite 100, City, State ZIP"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Recipient</h3>
+                <div className="mt-3 space-y-3">
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Recipient Organization *
+                    </label>
+                    <input
+                      type="text"
+                      value={recipientQuery}
+                      placeholder="Search organization or type new name..."
+                      onChange={(event) => handleRecipientQueryChange(event.target.value)}
+                      onFocus={() => setShowRecipientDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowRecipientDropdown(false), 120)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
+                    {showRecipientDropdown && filteredRecipientOrganizations.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
+                        {filteredRecipientOrganizations.map(org => (
+                          <button
+                            key={org.id}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleOrganizationSelect('recipient', org)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100"
+                          >
+                            <div className="text-sm font-medium text-gray-900">{org.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {describePrimaryAddress(org) || 'No saved address'}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedRecipientOrg && selectedRecipientOrg.addresses.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Recipient Address Book
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={formData.recipientAddressId || ''}
+                        onChange={(event) => handleAddressSelect('recipient', event.target.value)}
+                      >
+                        <option value="">Choose address...</option>
+                        {selectedRecipientOrg.addresses.map(addr => (
+                          <option key={addr.id || addr.streetAddress} value={addr.id || addr.streetAddress}>
+                            {addr.label ? `${addr.label} - ` : ''}{formatStructuredAddress(addr)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {!selectedRecipientOrg?.addresses?.length && selectedRecipientOrg && (
+                    <p className="text-xs text-gray-500">
+                      No saved addresses for this organization. Enter the address manually below.
+                    </p>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Delivery Address *
+                    </label>
+                    <textarea
+                      value={formData.recipientAddressText}
+                      onChange={(event) => updateAddressText('recipient', event.target.value)}
+                      rows={2}
+                      placeholder="123 Main St, Suite 100, City, State ZIP"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-            
-            {/* Organization and Address */}
-            {selectedOrg && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Organization
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedOrg.name}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Address
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    onChange={(e) => {
-                      const addr = selectedOrg.addresses.find(a => a.id === e.target.value);
-                      if (addr) {
-                        setQuickMailData({...quickMailData, address: formatStructuredAddress(addr)});
-                      }
-                    }}
-                  >
-                    <option value="">Choose address...</option>
-                    {selectedOrg.addresses.map(addr => (
-                      <option key={addr.id} value={addr.id}>
-                        {addr.label ? `${addr.label} - ` : ''}{formatStructuredAddress(addr)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-            
-            {/* Address */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Delivery Address *
-              </label>
-              <input
-                type="text"
-                value={quickMailData.address}
-                onChange={(e) => setQuickMailData({...quickMailData, address: e.target.value})}
-                placeholder="123 Main St, Suite 100, City, State ZIP"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            {/* Email and Phone */}
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
                 <input
                   type="email"
-                  value={quickMailData.email}
-                  onChange={(e) => setQuickMailData({...quickMailData, email: e.target.value})}
+                  value={formData.email}
+                  onChange={(event) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      email: event.target.value
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -4245,22 +4508,31 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 </label>
                 <input
                   type="tel"
-                  value={quickMailData.phone}
-                  onChange={(e) => setQuickMailData({...quickMailData, phone: e.target.value})}
+                  value={formData.phone}
+                  onChange={(event) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      phone: event.target.value
+                    }))
+                  }
                   placeholder="(555) 123-4567"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
-            
-            {/* Delivery Options */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Delivery Type *
               </label>
               <select
-                value={quickMailData.deliveryType}
-                onChange={(e) => setQuickMailData({...quickMailData, deliveryType: e.target.value})}
+                value={formData.deliveryType}
+                onChange={(event) =>
+                  setFormData(prev => ({
+                    ...prev,
+                    deliveryType: event.target.value
+                  }))
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="Certified Mail">Certified Mail</option>
@@ -4269,34 +4541,36 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 <option value="Express">Express (Next Day)</option>
               </select>
             </div>
-            
-            {/* Notes */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Notes
               </label>
               <textarea
-                value={quickMailData.notes}
-                onChange={(e) => setQuickMailData({...quickMailData, notes: e.target.value})}
+                value={formData.notes}
+                onChange={(event) =>
+                  setFormData(prev => ({
+                    ...prev,
+                    notes: event.target.value
+                  }))
+                }
                 rows={2}
                 placeholder="Any special instructions..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            
-            {/* Summary */}
+
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="text-sm font-medium text-blue-900 mb-2">Quick Mail Summary</h4>
               <div className="text-sm text-blue-700 space-y-1">
-                <p>• Document: {uploadedDoc ? uploadedDoc.name : 'Not uploaded'}</p>
-                <p>• Recipient: {quickMailData.recipientName || 'Not specified'}</p>
-                <p>• Delivery: {quickMailData.deliveryType}</p>
-                <p>• Estimated Cost: $7.95</p>
+                <p>• Documents: {documentSummary}</p>
+                <p>• Sender: {senderSummary}</p>
+                <p>• Recipient: {recipientSummary}</p>
+                <p>• Delivery: {formData.deliveryType}</p>
               </div>
             </div>
-            
-            {/* Actions */}
-            <div className="flex justify-end space-x-3 pt-4">
+
+            <div className="flex justify-end space-x-3 pt-2">
               <button
                 onClick={onClose}
                 className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
@@ -4305,7 +4579,13 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
               </button>
               <button
                 onClick={handleSend}
-                disabled={!uploadedDoc || !quickMailData.recipientName || !quickMailData.address}
+                disabled={
+                  !formData.documents.length ||
+                  !formData.senderOrganizationName.trim() ||
+                  !formData.senderAddressText.trim() ||
+                  !formData.recipientOrganizationName.trim() ||
+                  !formData.recipientAddressText.trim()
+                }
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-4 h-4 mr-2" />
