@@ -2939,12 +2939,15 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     const jobId = `JOB-${nameSegment}-${uniqueSuffix}`;
 
     const jobTimelineTemplate = buildTimelineForJob(now);
-    const dispatchedGroups = mailGroups.map((group, index) => {
-      if (!group.documents || group.documents.length === 0) {
+    const dispatchableIds = new Set(mailTaskGroups.map(group => group.id));
+    let trackingSequence = 1;
+    const dispatchedGroups = mailGroups.map(group => {
+      if (!dispatchableIds.has(group.id)) {
         return group;
       }
       const trackingNumber =
-        group.trackingNumber || `TRK-${uniqueSuffix}-${String(index + 1).padStart(4, '0')}`;
+        group.trackingNumber || `TRK-${uniqueSuffix}-${String(trackingSequence).padStart(4, '0')}`;
+      trackingSequence += 1;
       return {
         ...group,
         status: 'in-transit',
