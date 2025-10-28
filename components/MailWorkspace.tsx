@@ -86,6 +86,7 @@ const VIEW_ROUTE: Record<MailView, string> = {
 
 type MailWorkspaceProps = {
   activeView: MailView;
+  initialJobId?: string | null;
 };
 
 type MailDetailsDrawerProps = {
@@ -1933,7 +1934,7 @@ const MailGroupCard: React.FC<MailGroupCardProps> = ({
   );
 };
 
-const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
+const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView, initialJobId }) => {
   const router = useRouter();
   const steps = WIZARD_STEP_CONFIG;
   const pathname = usePathname();
@@ -1980,6 +1981,18 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     if (!target) return;
     router.push(target);
   };
+
+  const openJob = useCallback(
+    (job: JobRecord) => {
+      setSelectedJob(job);
+      const targetPath = `/track-mail/${job.id}`;
+      if (pathname === targetPath) {
+        return;
+      }
+      router.push(targetPath);
+    },
+    [pathname, router]
+  );
 
   const isActiveView = (view: MailView) => activeView === view;
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
@@ -2342,10 +2355,22 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
   }, [sampleJobs]);
 
   useEffect(() => {
-    if (activeView === 'tracking' && !selectedJob && sampleJobs.length > 0) {
+    if (activeView !== 'tracking') {
+      return;
+    }
+
+    if (initialJobId) {
+      const matchingJob = sampleJobs.find(job => job.id === initialJobId);
+      if (matchingJob && matchingJob.id !== selectedJob?.id) {
+        setSelectedJob(matchingJob);
+        return;
+      }
+    }
+
+    if (!selectedJob && sampleJobs.length > 0) {
       setSelectedJob(sampleJobs[0]);
     }
-  }, [activeView, selectedJob, sampleJobs]);
+  }, [activeView, initialJobId, sampleJobs, selectedJob]);
 
   useEffect(() => {
     const load = async () => {
@@ -2978,11 +3003,10 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     setSampleJobs(nextJobs);
     setArchiveResults(nextJobs);
     setTrackingEvents(jobTimelineTemplate);
-    setSelectedJob(newJob);
 
     alert('Mail job dispatched successfully!');
     clearWizardDraftState();
-    navigateTo('tracking');
+    openJob(newJob);
   };
 
   const handleRemoveGroupDocument = (groupId, documentId) => {
@@ -4928,8 +4952,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
           <button
             onClick={() => {
               if (sampleJobs.length > 0) {
-                setSelectedJob(sampleJobs[0]);
-                navigateTo('tracking');
+                openJob(sampleJobs[0]);
               }
             }}
             disabled={!sampleJobs.length}
@@ -4981,8 +5004,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
                       onClick={() => {
-                        setSelectedJob(job);
-                        navigateTo('tracking');
+                        openJob(job);
                       }}
                       className="text-blue-600 hover:text-blue-900 mr-3"
                     >
@@ -6304,13 +6326,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
     const [detailRecipient, setDetailRecipient] = useState<MailGroupRecord | null>(null);
     const jobRecipients = useMemo(() => {
-      if (selectedJob) {
-        const matches = recipients.filter(recipient => recipient.jobId === selectedJob.id);
-        if (matches.length > 0) {
-          return matches;
-        }
+      if (!selectedJob) {
+        return [];
       }
-      return recipients.filter(recipient => (recipient.documents?.length || 0) > 0);
+      return recipients.filter(recipient => recipient.jobId === selectedJob.id);
     }, [recipients, selectedJob]);
 
     useEffect(() => {
@@ -6455,7 +6474,14 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {jobRecipients.map((recipient) => {
+                {jobRecipients.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                      No mail items found for this job.
+                    </td>
+                  </tr>
+                ) : (
+                  jobRecipients.map((recipient) => {
                   const timeline = getTrackingTimelineForRecipient(recipient);
                   const hasTrackingNumber = Boolean(recipient.trackingNumber);
                   return (
@@ -6555,7 +6581,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                       )}
                     </React.Fragment>
                   );
-                })}
+                }))
               </tbody>
             </table>
           </div>
@@ -6770,8 +6796,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 <button
                   onClick={() => {
                     if (sampleJobs.length > 0) {
-                      setSelectedJob(sampleJobs[0]);
-                      navigateTo('tracking');
+                      openJob(sampleJobs[0]);
                     } else {
                       alert('No jobs available to track yet. Create a job first.');
                     }
@@ -6988,7 +7013,7 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
             setSampleJobs(nextJobs);
             setArchiveResults(nextJobs);
             setTrackingEvents(jobTimelineTemplate);
-            setSelectedJob(newJob);
+            openJob(newJob);
           }}
         />
       )}
