@@ -1367,6 +1367,28 @@ type MailGroupRecord = {
   notes?: string;
 };
 
+type WizardJobData = {
+  jobName: string;
+  dueDate: string;
+  priority: 'low' | 'standard' | 'high' | 'urgent';
+  notes: string;
+  senderOrganizationIds: string[];
+  recipientOrganizationIds: string[];
+  documents: string[];
+  recipients: MailGroupRecord[];
+};
+
+const createInitialWizardJobData = (): WizardJobData => ({
+  jobName: '',
+  dueDate: '',
+  priority: 'standard',
+  notes: '',
+  senderOrganizationIds: [],
+  recipientOrganizationIds: [],
+  documents: [],
+  recipients: []
+});
+
 const emptyAddress = (): StructuredAddress => ({
   streetAddress: '',
   city: '',
@@ -1880,16 +1902,30 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     return lookup;
   }, [organizations]);
 
-  const [jobData, setJobData] = useState({
-    jobName: '',
-    dueDate: '',
-    priority: 'standard',
-    notes: '',
-    senderOrganizationIds: [] as string[],
-    recipientOrganizationIds: [] as string[],
-    documents: [],
-    recipients: []
-  });
+  const [jobData, setJobData] = useState<WizardJobData>(() => createInitialWizardJobData());
+  const clearWizardDraftState = useCallback(() => {
+    setJobData(createInitialWizardJobData());
+    setMailGroups(prev => prev.filter(group => group.jobId));
+    setMailGroupSearch('');
+    setMailGroupSearchInput('');
+    setMailGroupClientFilter('all');
+    setMailGroupOrganizationFilter('all');
+    setSelectedPreviewGroupId(null);
+    setSelectedPreviewDocumentId(null);
+    setValidationProgress(0);
+    setIsValidating(false);
+    setAddressExceptions([]);
+    setWizardStep(1);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(WIZARD_JOB_STORAGE_KEY);
+      window.sessionStorage.removeItem(WIZARD_GROUPS_STORAGE_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_STORAGE_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_ENTERPRISES_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_ORGS_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_DOCUMENTS_KEY);
+      window.sessionStorage.removeItem(MAIL_DETAILS_RETURN_PATH_KEY);
+    }
+  }, []);
   const [isWizardHydrated, setIsWizardHydrated] = useState(false);
   const jobNameInputRef = useRef<HTMLInputElement | null>(null);
   const jobNameDraftRef = useRef('');
@@ -2786,36 +2822,8 @@ const MailWorkspace: React.FC<MailWorkspaceProps> = ({ activeView }) => {
     setSelectedJob(newJob);
 
     alert('Mail job dispatched successfully!');
-    setJobData({
-      jobName: '',
-      dueDate: '',
-      priority: 'standard',
-      notes: '',
-      senderOrganizationIds: [],
-      recipientOrganizationIds: [],
-      documents: [],
-      recipients: []
-    });
-    setMailGroupSearch('');
-    setMailGroupSearchInput('');
-    setMailGroupClientFilter('all');
-    setMailGroupOrganizationFilter('all');
-    setSelectedPreviewGroupId(null);
-    setSelectedPreviewDocumentId(null);
-    setValidationProgress(0);
-    setIsValidating(false);
-    setAddressExceptions([]);
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(WIZARD_JOB_STORAGE_KEY);
-      window.sessionStorage.removeItem(WIZARD_GROUPS_STORAGE_KEY);
-      window.sessionStorage.removeItem(MAIL_DETAILS_STORAGE_KEY);
-      window.sessionStorage.removeItem(MAIL_DETAILS_ENTERPRISES_KEY);
-      window.sessionStorage.removeItem(MAIL_DETAILS_ORGS_KEY);
-      window.sessionStorage.removeItem(MAIL_DETAILS_DOCUMENTS_KEY);
-      window.sessionStorage.removeItem(MAIL_DETAILS_RETURN_PATH_KEY);
-    }
+    clearWizardDraftState();
     navigateTo('tracking');
-    setWizardStep(1);
   };
 
   const handleRemoveGroupDocument = (groupId, documentId) => {
@@ -4248,7 +4256,10 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
           </button>
           <button
             type="button"
-            onClick={() => navigateTo('wizard')}
+            onClick={() => {
+              clearWizardDraftState();
+              navigateTo('wizard');
+            }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -5954,7 +5965,12 @@ Demo Industries,789 Pine St,San Diego,CA,92101,billing@demo.com,(555) 345-6789,P
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigateTo('wizard')}
+                  onClick={() => {
+                    if (!isActiveView('wizard')) {
+                      clearWizardDraftState();
+                    }
+                    navigateTo('wizard');
+                  }}
                   className={`text-sm font-medium ${isActiveView('wizard') ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                 >
                   Send Mail
